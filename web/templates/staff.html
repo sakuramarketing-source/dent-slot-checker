@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}スタッフ管理 - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>スタッフ管理</h1>
+<p class="page-description">各スタッフの有効/無効と職種（Dr: ドクター / DH: 歯科衛生士）を設定します。無効にしたスタッフはチェック対象から除外されます。</p>
+
+<div class="staff-actions">
+    <button id="syncBtn" class="btn btn-primary" onclick="syncStaff()">
+        <span class="btn-text">スタッフ同期</span>
+        <span class="btn-loading" style="display:none;">同期中...</span>
+    </button>
+    <span id="syncStatus" class="status-message"></span>
+</div>
+
+<div id="staffContainer" class="staff-container">
+    <div class="loading">読み込み中...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStaff() {
+    const container = document.getElementById('staffContainer');
+
+    try {
+        const response = await fetch('/api/staff/');
+        const data = await response.json();
+
+        if (Object.keys(data).length === 0) {
+            container.innerHTML = '<div class="no-data">スタッフデータがありません。先にチェックを実行してください。</div>';
+            return;
+        }
+
+        let html = '';
+        for (const [clinicName, clinicData] of Object.entries(data)) {
+            html += `
+                <div class="clinic-section">
+                    <h2>${clinicName}</h2>
+                    <div class="staff-list">
+            `;
+
+            for (const staff of clinicData.staff) {
+                const isDisabled = !staff.enabled;
+                const isAutoDisabled = staff.auto_disabled;
+                const tagsHtml = (staff.tags || []).map(tag =>
+                    `<span class="staff-tag">${tag}<button class="tag-remove" onclick="removeTag(this, '${clinicName}', '${staff.name}', '${tag}')">&times;</button></span>`
+                ).join('');
+
+                html += `
+                    <div class="staff-item ${isDisabled ? 'disabled' : ''}" data-clinic="${clinicName}" data-name="${staff.name}">
+                        <div class="staff-row-main">
+                            <label class="toggle-switch ${isAutoDisabled ? 'auto-disabled' : ''}">
+                                <input type="checkbox" ${staff.enabled ? 'checked' : ''} ${isAutoDisabled ? 'disabled' : ''} onchange="handleToggle(this)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="staff-name">${staff.name}</span>
+                            ${isAutoDisabled ? '<span class="auto-tag">自動除外</span>' : ''}
+                            <div class="category-buttons">
+                                <button class="cat-btn ${staff.category === 'doctor' ? 'active' : ''}" data-category="doctor" ${isDisabled ? 'disabled' : ''}>Dr</button>
+                                <button class="cat-btn ${staff.category === 'hygienist' ? 'active' : ''}" data-category="hygienist" ${isDisabled ? 'disabled' : ''}>DH</button>
+                                <button class="cat-btn ${staff.category === 'unknown' ? 'active' : ''}" data-category="unknown" ${isDisabled ? 'disabled' : ''}>--</button>
+                            </div>
+                            <div class="memo-input">
+                                <input type="text" class="memo-field" placeholder="メモ" value="${staff.memo || ''}"
+                                    onchange="updateMemo(this, '${clinicName}', '${staff.name}')" ${isDisabled ? 'disabled' : ''}>
+                            </div>
+                        </div>
+                        <div class="staff-row-tags">
+                            <div class="tags-container">
+                                ${tagsHtml}
+                                <button class="tag-add-btn" onclick="showTagInput(this)" ${isDisabled ? 'disabled' : ''}>+ タグ</button>
+                                <input type="text" class="tag-input" placeholder="タグを入力" style="display:none;"
+                                    onkeydown="handleTagInput(event, this, '${clinicName}', '${staff.name}')"
+                                    onblur="hideTagInput(this)">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+
+        // イベントリスナーを追加
+        document.querySelectorAll('.cat-btn').forEach(btn => {
+            btn.addEventListener('click', handleCategoryClick);
+        });
+
+    } catch (error) {
+        container.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+async function handleToggle(checkbox) {
+    const staffItem = checkbox.closest('.staff-item');
+    const clinic = staffItem.dataset.clinic;
+    const name = staffItem.dataset.name;
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // UI更新
+            if (data.enabled) {
+                staffItem.classList.remove('disabled');
+                staffItem.querySelectorAll('.cat-btn').forEach(btn => btn.disabled = false);
+            } else {
+                staffItem.classList.add('disabled');
+                staffItem.querySelectorAll('.cat-btn').forEach(btn => btn.disabled = true);
+            }
+        } else {
+            alert('保存に失敗しました: ' + (data.error || ''));
+            checkbox.checked = !checkbox.checked;
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+        checkbox.checked = !checkbox.checked;
+    }
+}
+
+async function handleCategoryClick(event) {
+    const btn = event.target;
+    if (btn.disabled) return;
+
+    const staffItem = btn.closest('.staff-item');
+    const clinic = staffItem.dataset.clinic;
+    const name = staffItem.dataset.name;
+    const category = btn.dataset.category;
+
+    // ボタン状態を更新
+    staffItem.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name, category })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alert('保存に失敗しました: ' + (data.error || ''));
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+    }
+}
+
+async function syncStaff() {
+    const btn = document.getElementById('syncBtn');
+    const btnText = btn.querySelector('.btn-text');
+    const btnLoading = btn.querySelector('.btn-loading');
+    const statusEl = document.getElementById('syncStatus');
+
+    // ボタンを無効化
+    btn.disabled = true;
+    btnText.style.display = 'none';
+    btnLoading.style.display = 'inline';
+    statusEl.textContent = '各分院のスタッフ情報を取得中...';
+    statusEl.className = 'status-message';
+
+    try {
+        const response = await fetch('/api/staff/sync', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            statusEl.textContent = data.message;
+            statusEl.className = 'status-message success';
+
+            // 取得件数を表示
+            const counts = Object.entries(data.results)
+                .map(([clinic, count]) => `${clinic}: ${count}名`)
+                .join(', ');
+            statusEl.textContent += ` (${counts})`;
+
+            // スタッフ一覧を再読み込み
+            await loadStaff();
+        } else {
+            statusEl.textContent = 'エラー: ' + data.message;
+            statusEl.className = 'status-message error';
+        }
+    } catch (error) {
+        statusEl.textContent = 'エラー: ' + error.message;
+        statusEl.className = 'status-message error';
+    } finally {
+        // ボタンを有効化
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        btnLoading.style.display = 'none';
+    }
+}
+
+// メモ更新
+async function updateMemo(input, clinic, name) {
+    const memo = input.value.trim();
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}/memo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, memo })
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+            alert('メモの保存に失敗しました');
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+    }
+}
+
+// タグ入力欄を表示
+function showTagInput(btn) {
+    const input = btn.nextElementSibling;
+    btn.style.display = 'none';
+    input.style.display = 'inline-block';
+    input.focus();
+}
+
+// タグ入力欄を非表示
+function hideTagInput(input) {
+    setTimeout(() => {
+        input.style.display = 'none';
+        input.value = '';
+        input.previousElementSibling.style.display = 'inline-block';
+    }, 100);
+}
+
+// タグ入力処理
+async function handleTagInput(event, input, clinic, name) {
+    if (event.key !== 'Enter') return;
+
+    const tag = input.value.trim();
+    if (!tag) return;
+
+    const staffItem = input.closest('.staff-item');
+    const currentTags = Array.from(staffItem.querySelectorAll('.staff-tag'))
+        .map(el => el.textContent.replace('×', '').trim());
+
+    if (currentTags.includes(tag)) {
+        alert('このタグは既に存在します');
+        return;
+    }
+
+    const newTags = [...currentTags, tag];
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, tags: newTags })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // UIを更新
+            const tagsContainer = input.closest('.tags-container');
+            const addBtn = tagsContainer.querySelector('.tag-add-btn');
+            const newTagEl = document.createElement('span');
+            newTagEl.className = 'staff-tag';
+            newTagEl.innerHTML = `${tag}<button class="tag-remove" onclick="removeTag(this, '${clinic}', '${name}', '${tag}')">&times;</button>`;
+            tagsContainer.insertBefore(newTagEl, addBtn);
+
+            input.value = '';
+            hideTagInput(input);
+        } else {
+            alert('タグの保存に失敗しました');
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+    }
+}
+
+// タグ削除
+async function removeTag(btn, clinic, name, tagToRemove) {
+    const staffItem = btn.closest('.staff-item');
+    const currentTags = Array.from(staffItem.querySelectorAll('.staff-tag'))
+        .map(el => el.textContent.replace('×', '').trim());
+
+    const newTags = currentTags.filter(t => t !== tagToRemove);
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, tags: newTags })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            btn.closest('.staff-tag').remove();
+        } else {
+            alert('タグの削除に失敗しました');
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+    }
+}
+
+// ページ読み込み時にスタッフを取得
+loadStaff();
+</script>
+{% endblock %}

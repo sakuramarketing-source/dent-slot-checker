@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}分院管理 - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>分院管理</h1>
+<p class="page-description">分院の有効/無効を切り替えます。無効にした分院はチェック対象から除外されます。</p>
+
+<div id="clinicsContainer" class="clinics-container">
+    <div class="loading">読み込み中...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadClinics() {
+    const container = document.getElementById('clinicsContainer');
+
+    try {
+        const response = await fetch('/api/clinics/');
+        const data = await response.json();
+
+        if (data.length === 0) {
+            container.innerHTML = '<div class="no-data">分院データがありません。</div>';
+            return;
+        }
+
+        let html = '<table class="data-table"><thead><tr><th>分院名</th><th>URL</th><th>ID</th><th>状態</th></tr></thead><tbody>';
+
+        for (const clinic of data) {
+            html += `
+                <tr data-clinic="${clinic.name}">
+                    <td>${clinic.name}</td>
+                    <td class="url-cell">${clinic.url}</td>
+                    <td>${clinic.id}</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${clinic.enabled ? 'checked' : ''} onchange="toggleClinic('${clinic.name}', this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="status-text">${clinic.enabled ? '有効' : '無効'}</span>
+                    </td>
+                </tr>
+            `;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+    } catch (error) {
+        container.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+async function toggleClinic(clinicName, checkbox) {
+    const row = checkbox.closest('tr');
+    const statusText = row.querySelector('.status-text');
+
+    try {
+        const response = await fetch(`/api/clinics/${encodeURIComponent(clinicName)}/toggle`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            statusText.textContent = data.enabled ? '有効' : '無効';
+            checkbox.checked = data.enabled;
+        } else {
+            alert('変更に失敗しました: ' + (data.error || ''));
+            checkbox.checked = !checkbox.checked;
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+        checkbox.checked = !checkbox.checked;
+    }
+}
+
+// ページ読み込み時に分院を取得
+loadClinics();
+</script>
+{% endblock %}

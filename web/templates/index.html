@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}ダッシュボード - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>ダッシュボード</h1>
+
+<div class="dashboard-actions">
+    <button id="runCheckBtn" class="btn btn-primary">手動チェック実行</button>
+    <span id="checkStatus" class="status-message"></span>
+</div>
+
+{% if result %}
+<div class="result-summary">
+    <h2>最新チェック結果</h2>
+    <p class="check-info">
+        <strong>チェック対象日:</strong> {{ result.check_date }}<br>
+        <strong>チェック日時:</strong> {{ result.checked_at }}
+    </p>
+
+    <div class="summary-stats">
+        <div class="stat-box">
+            <span class="stat-value">{{ result.summary.total_clinics }}</span>
+            <span class="stat-label">対象分院数</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-value">{{ result.summary.clinics_with_availability }}</span>
+            <span class="stat-label">空きあり分院</span>
+        </div>
+    </div>
+</div>
+
+<div class="results-grid">
+    {% for clinic_result in result.results %}
+    <div class="clinic-card {% if clinic_result.result %}has-availability{% else %}no-availability{% endif %}">
+        <div class="clinic-header">
+            <h3>{{ clinic_result.clinic }}</h3>
+            <span class="status-badge {% if clinic_result.result %}ok{% else %}ng{% endif %}">
+                {% if clinic_result.result %}OK{% else %}NG{% endif %}
+            </span>
+        </div>
+        <div class="clinic-body">
+            <p><strong>30分ブロック数:</strong> {{ clinic_result.total_30min_blocks }}</p>
+            {% if clinic_result.details %}
+            <details>
+                <summary>詳細を見る</summary>
+                <ul class="detail-list">
+                    {% for detail in clinic_result.details %}
+                    <li>
+                        <strong>{{ detail.doctor }}</strong>: {{ detail.blocks }}ブロック
+                        <ul>
+                            {% for time in detail.times %}
+                            <li>{{ time }}</li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="no-results">
+    <p>チェック結果がありません。「手動チェック実行」ボタンをクリックしてチェックを実行してください。</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('runCheckBtn').addEventListener('click', async function() {
+    const btn = this;
+    const status = document.getElementById('checkStatus');
+
+    btn.disabled = true;
+    btn.textContent = 'チェック中...';
+    status.textContent = '';
+    status.className = 'status-message';
+
+    try {
+        const response = await fetch('/api/results/check', {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            status.textContent = 'チェック完了！ページを更新します...';
+            status.classList.add('success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            status.textContent = 'エラー: ' + (data.message || 'チェック失敗');
+            status.classList.add('error');
+            btn.disabled = false;
+            btn.textContent = '手動チェック実行';
+        }
+    } catch (error) {
+        status.textContent = 'エラー: ' + error.message;
+        status.classList.add('error');
+        btn.disabled = false;
+        btn.textContent = '手動チェック実行';
+    }
+});
+</script>
+{% endblock %}

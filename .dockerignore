@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs
+*.egg-info
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs and output (will be created at runtime)
+logs/*.log
+output/*.json
+output/*.csv
+
+# Local config (sensitive data)
+config/clinics.yaml
+
+# Tests
+tests
+pytest_cache
+.coverage
+
+# Documentation
+*.md
+!README.md
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}ルール設定 - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>ルール設定</h1>
+<p class="page-description">空き枠判定のルールを設定します。</p>
+
+<div id="rulesContainer" class="rules-container">
+    <div class="loading">読み込み中...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadRules() {
+    const container = document.getElementById('rulesContainer');
+
+    try {
+        const response = await fetch('/api/rules/');
+        const data = await response.json();
+
+        const html = `
+            <form id="rulesForm" class="rules-form">
+                <div class="form-group">
+                    <label for="consecutiveSlots">連続スロット数（30分 = 6スロット）</label>
+                    <input type="number" id="consecutiveSlots" name="consecutive_slots_required"
+                           value="${data.consecutive_slots_required}" min="1" max="20">
+                    <small>何スロット連続で空きがあれば1ブロックとカウントするか（5分×6 = 30分）</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="minBlocks">必要ブロック数</label>
+                    <input type="number" id="minBlocks" name="minimum_blocks_required"
+                           value="${data.minimum_blocks_required}" min="1" max="20">
+                    <small>何ブロック以上あれば「空きあり」と判定するか</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="excludePatterns">除外パターン（カンマ区切り）</label>
+                    <input type="text" id="excludePatterns" name="exclude_patterns"
+                           value="${data.exclude_patterns.join(', ')}">
+                    <small>この文字列を含むカラム名は除外されます（例: 訪問）</small>
+                </div>
+
+                <div class="form-group">
+                    <label>チェック時間帯</label>
+                    <div class="time-range">
+                        <input type="number" id="checkHoursStart" name="check_hours_start"
+                               value="${data.check_hours.start}" min="0" max="23">
+                        <span>時 〜</span>
+                        <input type="number" id="checkHoursEnd" name="check_hours_end"
+                               value="${data.check_hours.end}" min="0" max="23">
+                        <span>時</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="slotInterval">スロット間隔（分）</label>
+                    <input type="number" id="slotInterval" name="slot_interval_minutes"
+                           value="${data.slot_interval_minutes}" min="1" max="30">
+                    <small>1スロットあたりの時間</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    <span id="saveStatus" class="status-message"></span>
+                </div>
+            </form>
+        `;
+
+        container.innerHTML = html;
+
+        // フォームのイベントリスナー
+        document.getElementById('rulesForm').addEventListener('submit', saveRules);
+
+    } catch (error) {
+        container.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+async function saveRules(event) {
+    event.preventDefault();
+
+    const form = event.target;
+    const status = document.getElementById('saveStatus');
+
+    const payload = {
+        consecutive_slots_required: parseInt(document.getElementById('consecutiveSlots').value),
+        minimum_blocks_required: parseInt(document.getElementById('minBlocks').value),
+        exclude_patterns: document.getElementById('excludePatterns').value,
+        check_hours: {
+            start: parseInt(document.getElementById('checkHoursStart').value),
+            end: parseInt(document.getElementById('checkHoursEnd').value)
+        },
+        slot_interval_minutes: parseInt(document.getElementById('slotInterval').value)
+    };
+
+    try {
+        const response = await fetch('/api/rules/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            status.textContent = '保存しました！';
+            status.className = 'status-message success';
+        } else {
+            status.textContent = '保存に失敗しました';
+            status.className = 'status-message error';
+        }
+
+        setTimeout(() => {
+            status.textContent = '';
+            status.className = 'status-message';
+        }, 3000);
+
+    } catch (error) {
+        status.textContent = 'エラー: ' + error.message;
+        status.className = 'status-message error';
+    }
+}
+
+// ページ読み込み時にルールを取得
+loadRules();
+</script>
+{% endblock %}

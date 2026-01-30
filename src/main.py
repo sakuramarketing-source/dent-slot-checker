@@ -1,0 +1,277 @@
+"""歯科予約空き状況チェッカー メインモジュール
+
+dent-sys.net および Stransa (Apotool & Box) に対応
+"""
+
+import asyncio
+import argparse
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Any
+
+from .config_loader import (
+    load_config,
+    get_enabled_clinics,
+    get_exclude_patterns,
+    get_slot_settings
+)
+from .scraper import scrape_all_clinics
+from .scraper_stransa import scrape_all_stransa_clinics
+from .slot_analyzer import analyze_doctor_slots, check_clinic_availability, count_30min_blocks
+from .output_writer import save_results, format_summary
+
+
+# ロギング設定
+def setup_logging(log_dir: Path = None):
+    """ロギングを設定"""
+    if log_dir is None:
+        log_dir = Path(__file__).parent.parent / 'logs'
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = log_dir / f'slot_checker_{timestamp}.log'
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+
+
+def analyze_results(
+    scrape_results: Dict[str, Dict[str, List[int]]],
+    slot_settings: Dict[str, int],
+    system_type: str = 'dent-sys'
+) -> Dict[str, Any]:
+    """
+    スクレイピング結果を分析してチェック結果を生成
+
+    Args:
+        scrape_results: {分院名: {先生名/チェア名: [スロット時間のリスト]}}
+        slot_settings: スロット設定
+        system_type: システムタイプ ('dent-sys' or 'stransa')
+
+    Returns:
+        分析結果
+    """
+    check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    checked_at = datetime.now().isoformat()
+
+    clinic_results = []
+    clinics_with_availability = 0
+
+    minimum_blocks = slot_settings['minimum_blocks_required']
+
+    # システムタイプによってスロット設定を変更
+    if system_type == 'stransa':
+        # Stransa: 15分刻み、2連続で30分
+        consecutive_required = 2
+        interval = 15
+    else:
+        # dent-sys.net: 5分刻み、6連続で30分
+        consecutive_required = slot_settings['consecutive_slots_required']
+        interval = slot_settings['slot_interval_minutes']
+
+    for clinic_name, doctor_slots in scrape_results.items():
+        doctor_results = []
+
+        for doctor_name, slot_times in doctor_slots.items():
+            analysis = analyze_doctor_slots(
+                doctor_name,
+                slot_times,
+                consecutive_required,
+                interval
+            )
+            if analysis['blocks'] > 0:
+                doctor_results.append(analysis)
+
+        is_available, total_blocks = check_clinic_availability(
+            doctor_results, minimum_blocks
+        )
+
+        if is_available:
+            clinics_with_availability += 1
+
+        clinic_results.append({
+            'clinic': clinic_name,
+            'system': system_type,
+            'result': is_available,
+            'total_30min_blocks': total_blocks,
+            'details': doctor_results
+        })
+
+    return {
+        'check_date': check_date,
+        'checked_at': checked_at,
+        'results': clinic_results,
+        'summary': {
+            'total_clinics': len(clinic_results),
+            'clinics_with_availability': clinics_with_availability
+        }
+    }
+
+
+async def main_async(
+    headless: bool = True,
+    output_formats: List[str] = None,
+    system_filter: str = None
+) -> Dict[str, Any]:
+    """
+    メイン処理（非同期）
+
+    Args:
+        headless: ヘッドレスモードで実行するか
+        output_formats: 出力形式リスト
+        system_filter: 対象システム ('dent-sys', 'stransa', None=全て)
+
+    Returns:
+        チェック結果
+    """
+    logger = logging.getLogger(__name__)
+
+    if output_formats is None:
+        output_formats = ['json', 'csv']
+
+    # 設定読み込み
+    config = load_config()
+    exclude_patterns = get_exclude_patterns(config)
+    slot_settings = get_slot_settings(config)
+
+    # システム別に分院を分類
+    dent_sys_clinics = [
+        c for c in config.get('dent_sys_clinics', [])
+        if c.get('enabled', True)
+    ]
+    stransa_clinics = [
+        c for c in config.get('stransa_clinics', [])
+        if c.get('enabled', True)
+    ]
+
+    # フィルタを適用
+    if system_filter == 'dent-sys':
+        stransa_clinics = []
+    elif system_filter == 'stransa':
+        dent_sys_clinics = []
+
+    logger.info(f"dent-sys.net 分院数: {len(dent_sys_clinics)}")
+    logger.info(f"Stransa 分院数: {len(stransa_clinics)}")
+    logger.info(f"除外パターン: {exclude_patterns}")
+    logger.info(f"スロット設定: {slot_settings}")
+
+    # 設定ファイルパス
+    config_path = Path(__file__).parent.parent / 'config'
+
+    all_results = []
+    total_clinics = 0
+    clinics_with_availability = 0
+
+    # dent-sys.net スクレイピング
+    if dent_sys_clinics:
+        logger.info("=== dent-sys.net スクレイピング開始 ===")
+        dent_scrape_results = await scrape_all_clinics(
+            dent_sys_clinics,
+            exclude_patterns,
+            slot_settings['slot_interval_minutes'],
+            headless,
+            str(config_path)
+        )
+
+        # 結果分析
+        dent_analysis = analyze_results(dent_scrape_results, slot_settings, 'dent-sys')
+        all_results.extend(dent_analysis['results'])
+        total_clinics += dent_analysis['summary']['total_clinics']
+        clinics_with_availability += dent_analysis['summary']['clinics_with_availability']
+
+    # Stransa スクレイピング
+    if stransa_clinics:
+        logger.info("=== Stransa スクレイピング開始 ===")
+        stransa_scrape_results = await scrape_all_stransa_clinics(
+            stransa_clinics,
+            headless
+        )
+
+        # 結果分析
+        stransa_analysis = analyze_results(stransa_scrape_results, slot_settings, 'stransa')
+        all_results.extend(stransa_analysis['results'])
+        total_clinics += stransa_analysis['summary']['total_clinics']
+        clinics_with_availability += stransa_analysis['summary']['clinics_with_availability']
+
+    # 統合結果を作成
+    check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    checked_at = datetime.now().isoformat()
+
+    combined_results = {
+        'check_date': check_date,
+        'checked_at': checked_at,
+        'results': all_results,
+        'summary': {
+            'total_clinics': total_clinics,
+            'clinics_with_availability': clinics_with_availability
+        }
+    }
+
+    # 結果出力
+    output_dir = Path(__file__).parent.parent / 'output'
+    saved_files = save_results(combined_results, output_dir, output_formats)
+
+    for f in saved_files:
+        logger.info(f"結果保存: {f}")
+
+    # サマリー出力
+    print(format_summary(combined_results))
+
+    return combined_results
+
+
+def main():
+    """メイン関数（エントリーポイント）"""
+    parser = argparse.ArgumentParser(
+        description='歯科予約空き状況チェッカー (dent-sys.net / Stransa対応)'
+    )
+    parser.add_argument(
+        '--no-headless',
+        action='store_true',
+        help='ブラウザを表示して実行（デバッグ用）'
+    )
+    parser.add_argument(
+        '--format',
+        choices=['json', 'csv', 'both'],
+        default='both',
+        help='出力形式（デフォルト: both）'
+    )
+    parser.add_argument(
+        '--system',
+        choices=['dent-sys', 'stransa', 'all'],
+        default='all',
+        help='対象システム（デフォルト: all）'
+    )
+
+    args = parser.parse_args()
+
+    setup_logging()
+
+    headless = not args.no_headless
+
+    if args.format == 'both':
+        output_formats = ['json', 'csv']
+    else:
+        output_formats = [args.format]
+
+    system_filter = None if args.system == 'all' else args.system
+
+    # 非同期処理を実行
+    results = asyncio.run(main_async(headless, output_formats, system_filter))
+
+    # 終了コード: 条件を満たす分院があれば0、なければ1
+    clinics_available = results['summary']['clinics_with_availability']
+    exit_code = 0 if clinics_available > 0 else 1
+    exit(exit_code)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/*.log
+
+# Output files
+output/*.json
+output/*.csv
+
+# Sensitive config (credentials)
+config/clinics.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.local

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}結果一覧 - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>結果一覧</h1>
+<p class="page-description">過去のチェック結果を確認できます。</p>
+
+<div class="results-controls">
+    <label for="dateSelect">日付を選択:</label>
+    <select id="dateSelect">
+        <option value="">読み込み中...</option>
+    </select>
+</div>
+
+<div id="resultsContainer" class="results-detail-container">
+    <div class="loading">読み込み中...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadResultList() {
+    const select = document.getElementById('dateSelect');
+
+    try {
+        const response = await fetch('/api/results/list');
+        const data = await response.json();
+
+        if (data.length === 0) {
+            select.innerHTML = '<option value="">結果がありません</option>';
+            document.getElementById('resultsContainer').innerHTML = '<div class="no-data">結果がありません</div>';
+            return;
+        }
+
+        select.innerHTML = data.map(item =>
+            `<option value="${item.check_date}">${item.check_date}</option>`
+        ).join('');
+
+        // 最初の日付のデータを読み込む
+        loadResultByDate(data[0].check_date);
+
+        select.addEventListener('change', function() {
+            loadResultByDate(this.value);
+        });
+
+    } catch (error) {
+        select.innerHTML = '<option value="">エラー</option>';
+        document.getElementById('resultsContainer').innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+async function loadResultByDate(date) {
+    const container = document.getElementById('resultsContainer');
+    container.innerHTML = '<div class="loading">読み込み中...</div>';
+
+    try {
+        // 職種別集計付きのAPIを使用
+        const response = await fetch('/api/results/with-categories');
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+
+        let html = `
+            <div class="result-header">
+                <p><strong>チェック対象日:</strong> ${data.check_date}</p>
+                <p><strong>チェック日時:</strong> ${data.checked_at}</p>
+            </div>
+
+            <div class="summary-stats">
+                <div class="stat-box">
+                    <span class="stat-value">${data.summary.total_clinics}</span>
+                    <span class="stat-label">対象分院数</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${data.summary.clinics_with_availability}</span>
+                    <span class="stat-label">不足分院</span>
+                </div>
+            </div>
+
+            <div class="results-grid">
+        `;
+
+        for (const result of data.results) {
+            const catSummary = result.category_summary || {};
+
+            html += `
+                <div class="clinic-card ${result.result ? 'has-availability' : 'no-availability'}">
+                    <div class="clinic-header">
+                        <h3>${result.clinic}</h3>
+                        <span class="status-badge ${result.result ? 'ok' : 'ng'}">
+                            ${result.result ? '不足' : '充足'}
+                        </span>
+                    </div>
+                    <div class="clinic-body">
+                        <p><strong>30分ブロック数:</strong> ${result.total_30min_blocks}</p>
+                        ${(catSummary.doctor || catSummary.hygienist) ? `
+                            <div class="category-summary">
+                                ${catSummary.doctor ? `<span class="cat-stat doctor">Dr: ${catSummary.doctor}</span>` : ''}
+                                ${catSummary.hygienist ? `<span class="cat-stat hygienist">DH: ${catSummary.hygienist}</span>` : ''}
+                                ${catSummary.other ? `<span class="cat-stat other">他: ${catSummary.other}</span>` : ''}
+                            </div>
+                        ` : ''}
+                        ${result.details && result.details.length > 0 ? `
+                            <details>
+                                <summary>詳細を見る</summary>
+                                <ul class="detail-list">
+                                    ${result.details.map(detail => `
+                                        <li>
+                                            <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
+                                            <strong>${detail.doctor}</strong>: ${detail.blocks}ブロック
+                                            ${detail.memo ? `<span class="staff-memo">(${detail.memo})</span>` : ''}
+                                            <ul>
+                                                ${detail.times.map(time => `<li>${time}</li>`).join('')}
+                                            </ul>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </details>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+
+    } catch (error) {
+        container.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+function getCategoryLabel(category) {
+    switch(category) {
+        case 'doctor': return 'Dr';
+        case 'hygienist': return 'DH';
+        default: return '--';
+    }
+}
+
+// ページ読み込み時に結果リストを取得
+loadResultList();
+</script>
+{% endblock %}

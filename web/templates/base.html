@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}予約空き状況チェッカー{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">予約空き状況チェッカー</a>
+        </div>
+        <ul class="nav-links">
+            <li><a href="/" class="{% if request.endpoint == 'main.index' %}active{% endif %}">ダッシュボード</a></li>
+            <li><a href="/staff" class="{% if request.endpoint == 'main.staff_page' %}active{% endif %}">スタッフ管理</a></li>
+            <li><a href="/clinics" class="{% if request.endpoint == 'main.clinics_page' %}active{% endif %}">分院管理</a></li>
+            <li><a href="/rules" class="{% if request.endpoint == 'main.rules_page' %}active{% endif %}">ルール設定</a></li>
+            <li><a href="/results" class="{% if request.endpoint == 'main.results_page' %}active{% endif %}">結果一覧</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,27 @@
+# dent-sys.net系 分院設定
+# このファイルをclinics.yamlにコピーして、実際の認証情報を入力してください
+clinics:
+  - name: "サンプル歯科"
+    url: "https://www.dent-sys.net/sample/t/"
+    id: "your_id"
+    password: "your_password"
+    enabled: true
+
+# Stransa (Apotool & Box) 分院設定
+stransa_clinics:
+  - name: "サンプル医院"
+    url: "https://user.stransa.co.jp/login"
+    id: "your_email@example.com"
+    password: "your_password"
+    enabled: true
+
+# 共通設定
+settings:
+  consecutive_slots_required: 6
+  minimum_blocks_required: 4
+  slot_interval_minutes: 5
+  exclude_patterns:
+    - "訪問"
+  check_hours:
+    start: 9
+    end: 19

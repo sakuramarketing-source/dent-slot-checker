@@ -1,0 +1,5 @@
+playwright>=1.40.0
+pyyaml>=6.0
+python-dateutil>=2.8.2
+flask>=3.0.0
+gunicorn>=21.0.0
