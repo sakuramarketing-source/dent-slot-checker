@@ -22,6 +22,9 @@ RUN playwright install chromium --with-deps
 # Copy application code
 COPY . .
 
+# Use dummy config for Docker (real config via secrets/env)
+RUN cp config/clinics.docker.yaml config/clinics.yaml
+
 # Create output and logs directories
 RUN mkdir -p output logs
 

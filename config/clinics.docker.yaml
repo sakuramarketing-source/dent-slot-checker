@@ -1,0 +1,16 @@
+# Docker/Cloud Run用のダミー設定
+# 実際の認証情報は環境変数またはSecret Managerで設定してください
+
+clinics: []
+
+stransa_clinics: []
+
+settings:
+  consecutive_slots_required: 6
+  minimum_blocks_required: 4
+  slot_interval_minutes: 5
+  exclude_patterns:
+    - "訪問"
+  check_hours:
+    start: 9
+    end: 19

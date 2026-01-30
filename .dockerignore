@@ -26,8 +26,8 @@ logs/*.log
 output/*.json
 output/*.csv
 
-# Local config (sensitive data)
-config/clinics.yaml
+# Keep config files for container
+# config/clinics.yaml - needed for app startup
 
 # Tests
 tests

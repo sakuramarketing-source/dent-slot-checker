@@ -23,8 +23,10 @@ logs/*.log
 output/*.json
 output/*.csv
 
-# Sensitive config (credentials)
+# Sensitive config (credentials) - DO NOT COMMIT
 config/clinics.yaml
+# Docker版はOK
+!config/clinics.docker.yaml
 
 # OS
 .DS_Store
