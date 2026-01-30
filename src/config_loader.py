@@ -11,13 +11,24 @@ def load_yaml(file_path: Path) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def load_yaml_optional(file_path: Path, default: Dict = None) -> Dict[str, Any]:
+    """YAMLファイルを読み込む（存在しない場合はデフォルト値を返す）"""
+    if default is None:
+        default = {}
+    if not file_path.exists():
+        return default
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f) or default
+
+
 def load_config(config_dir: Path = None) -> Dict[str, Any]:
     """全ての設定ファイルを読み込む"""
     if config_dir is None:
         config_dir = Path(__file__).parent.parent / 'config'
 
     clinics_config = load_yaml(config_dir / 'clinics.yaml')
-    staff_rules = load_yaml(config_dir / 'staff_rules.yaml')
+    # staff_rules.yamlは任意（存在しない場合は空のデフォルト値）
+    staff_rules = load_yaml_optional(config_dir / 'staff_rules.yaml', {'staff_categories': {}, 'special_rules': {}})
 
     # dent-sys.net 分院
     dent_sys_clinics = clinics_config.get('clinics', [])
