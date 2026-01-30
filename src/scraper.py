@@ -409,7 +409,8 @@ async def scrape_all_clinics(
     exclude_patterns: List[str],
     slot_interval: int = 5,
     headless: bool = True,
-    config_path: str = None
+    config_path: str = None,
+    progress_callback: callable = None
 ) -> Dict[str, Dict[str, List[int]]]:
     """
     全ての分院をスクレイピング
@@ -420,6 +421,7 @@ async def scrape_all_clinics(
         slot_interval: スロット間隔（分）
         headless: ヘッドレスモードで実行するか
         config_path: 設定ファイルのパス
+        progress_callback: 進捗コールバック関数 (clinic_name, current, total) -> None
 
     Returns:
         {分院名: {先生名: [スロット時間のリスト]}} の辞書
@@ -432,11 +434,16 @@ async def scrape_all_clinics(
         staff_rules = load_staff_rules(config_path)
 
     staff_by_clinic = staff_rules.get('staff_by_clinic', {})
+    total_clinics = len(clinics)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
 
-        for clinic in clinics:
+        for idx, clinic in enumerate(clinics):
+            # 進捗コールバックを呼び出し
+            if progress_callback:
+                progress_callback(clinic['name'], idx + 1, total_clinics)
+
             logger.info(f"スクレイピング開始: {clinic['name']}")
 
             # この分院の無効化スタッフリストを取得

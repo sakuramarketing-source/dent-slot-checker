@@ -17,7 +17,7 @@ from .config_loader import (
     get_slot_settings
 )
 from .scraper import scrape_all_clinics
-from .scraper_stransa import scrape_all_stransa_clinics
+from .scraper_stransa import scrape_all_stransa_clinics, scrape_all_stransa_clinics_with_offset
 from .slot_analyzer import analyze_doctor_slots, check_clinic_availability, count_30min_blocks
 from .output_writer import save_results, format_summary
 
@@ -224,6 +224,117 @@ async def main_async(
 
     # サマリー出力
     print(format_summary(combined_results))
+
+    return combined_results
+
+
+async def run_with_progress(
+    progress_callback: callable = None,
+    headless: bool = True,
+    output_formats: List[str] = None
+) -> Dict[str, Any]:
+    """
+    進捗コールバック付きでチェックを実行
+
+    Args:
+        progress_callback: 進捗コールバック関数 (clinic_name, current, total) -> None
+        headless: ヘッドレスモードで実行するか
+        output_formats: 出力形式リスト
+
+    Returns:
+        チェック結果
+    """
+    logger = logging.getLogger(__name__)
+
+    if output_formats is None:
+        output_formats = ['json']
+
+    # 設定読み込み
+    config = load_config()
+    exclude_patterns = get_exclude_patterns(config)
+    slot_settings = get_slot_settings(config)
+
+    # システム別に分院を分類
+    dent_sys_clinics = [
+        c for c in config.get('dent_sys_clinics', [])
+        if c.get('enabled', True)
+    ]
+    stransa_clinics = [
+        c for c in config.get('stransa_clinics', [])
+        if c.get('enabled', True)
+    ]
+
+    # 全分院数を計算
+    total_clinics = len(dent_sys_clinics) + len(stransa_clinics)
+
+    logger.info(f"dent-sys.net 分院数: {len(dent_sys_clinics)}")
+    logger.info(f"Stransa 分院数: {len(stransa_clinics)}")
+    logger.info(f"合計: {total_clinics}")
+
+    # 設定ファイルパス
+    config_path = Path(__file__).parent.parent / 'config'
+
+    all_results = []
+    clinics_with_availability = 0
+
+    # dent-sys.net スクレイピング
+    if dent_sys_clinics:
+        logger.info("=== dent-sys.net スクレイピング開始 ===")
+
+        def dent_progress(name, current, total):
+            if progress_callback:
+                progress_callback(name, current, total_clinics)
+
+        dent_scrape_results = await scrape_all_clinics(
+            dent_sys_clinics,
+            exclude_patterns,
+            slot_settings['slot_interval_minutes'],
+            headless,
+            str(config_path),
+            progress_callback=dent_progress
+        )
+
+        # 結果分析
+        dent_analysis = analyze_results(dent_scrape_results, slot_settings, 'dent-sys')
+        all_results.extend(dent_analysis['results'])
+        clinics_with_availability += dent_analysis['summary']['clinics_with_availability']
+
+    # Stransa スクレイピング（オフセット付き）
+    if stransa_clinics:
+        logger.info("=== Stransa スクレイピング開始 ===")
+        stransa_scrape_results = await scrape_all_stransa_clinics_with_offset(
+            stransa_clinics,
+            headless,
+            progress_callback=progress_callback,
+            current_offset=len(dent_sys_clinics),
+            total_all=total_clinics
+        )
+
+        # 結果分析
+        stransa_analysis = analyze_results(stransa_scrape_results, slot_settings, 'stransa')
+        all_results.extend(stransa_analysis['results'])
+        clinics_with_availability += stransa_analysis['summary']['clinics_with_availability']
+
+    # 統合結果を作成
+    check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    checked_at = datetime.now().isoformat()
+
+    combined_results = {
+        'check_date': check_date,
+        'checked_at': checked_at,
+        'results': all_results,
+        'summary': {
+            'total_clinics': total_clinics,
+            'clinics_with_availability': clinics_with_availability
+        }
+    }
+
+    # 結果出力
+    output_dir = Path(__file__).parent.parent / 'output'
+    saved_files = save_results(combined_results, output_dir, output_formats)
+
+    for f in saved_files:
+        logger.info(f"結果保存: {f}")
 
     return combined_results
 

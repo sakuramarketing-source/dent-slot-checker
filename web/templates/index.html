@@ -72,37 +72,52 @@
 
 {% block scripts %}
 <script>
-document.getElementById('runCheckBtn').addEventListener('click', async function() {
+document.getElementById('runCheckBtn').addEventListener('click', function() {
     const btn = this;
     const status = document.getElementById('checkStatus');
 
     btn.disabled = true;
     btn.textContent = 'チェック中...';
-    status.textContent = '';
+    status.textContent = '接続中...';
     status.className = 'status-message';
 
-    try {
-        const response = await fetch('/api/results/check', {
-            method: 'POST'
-        });
-        const data = await response.json();
+    // EventSourceでSSE接続
+    const eventSource = new EventSource('/api/results/check-stream');
 
-        if (data.success) {
-            status.textContent = 'チェック完了！ページを更新します...';
-            status.classList.add('success');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            status.textContent = 'エラー: ' + (data.message || 'チェック失敗');
-            status.classList.add('error');
-            btn.disabled = false;
-            btn.textContent = '手動チェック実行';
+    eventSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'progress') {
+                // 進捗表示
+                status.textContent = `${data.clinic} をチェック中... (${data.current}/${data.total})`;
+                status.className = 'status-message progress';
+            } else if (data.type === 'complete') {
+                // 完了
+                eventSource.close();
+                status.textContent = `チェック完了！ ${data.summary.clinics_with_availability}/${data.summary.total_clinics} 分院で空きあり`;
+                status.className = 'status-message success';
+                setTimeout(() => location.reload(), 1500);
+            } else if (data.type === 'error') {
+                // エラー
+                eventSource.close();
+                status.textContent = 'エラー: ' + data.message;
+                status.className = 'status-message error';
+                btn.disabled = false;
+                btn.textContent = '手動チェック実行';
+            }
+        } catch (e) {
+            console.error('Parse error:', e);
         }
-    } catch (error) {
-        status.textContent = 'エラー: ' + error.message;
-        status.classList.add('error');
+    };
+
+    eventSource.onerror = function(event) {
+        eventSource.close();
+        status.textContent = 'エラー: 接続が切断されました';
+        status.className = 'status-message error';
         btn.disabled = false;
         btn.textContent = '手動チェック実行';
-    }
+    };
 });
 </script>
 {% endblock %}

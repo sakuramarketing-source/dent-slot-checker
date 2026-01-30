@@ -109,6 +109,11 @@ h1 {
     color: #e74c3c;
 }
 
+.status-message.progress {
+    color: #3498db;
+    font-weight: 500;
+}
+
 .result-summary {
     background: white;
     padding: 1.5rem;

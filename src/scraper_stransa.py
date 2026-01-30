@@ -408,7 +408,8 @@ async def scrape_stransa_clinic(
 
 async def scrape_all_stransa_clinics(
     clinics: List[Dict[str, str]],
-    headless: bool = True
+    headless: bool = True,
+    progress_callback: callable = None
 ) -> Dict[str, Dict[str, List[int]]]:
     """
     全てのStransa分院をスクレイピング
@@ -416,18 +417,71 @@ async def scrape_all_stransa_clinics(
     Args:
         clinics: 分院設定リスト
         headless: ヘッドレスモードで実行するか
+        progress_callback: 進捗コールバック関数 (clinic_name, current, total) -> None
 
     Returns:
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
 
+    # stransa分院のみカウント
+    stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
+    total_clinics = len(stransa_clinics)
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
 
-        for clinic in clinics:
-            if clinic.get('system') != 'stransa':
-                continue
+        for idx, clinic in enumerate(stransa_clinics):
+            # 進捗コールバックを呼び出し
+            if progress_callback:
+                progress_callback(clinic['name'], idx + 1, total_clinics)
+
+            logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
+
+            chair_slots = await scrape_stransa_clinic(browser, clinic)
+
+            if chair_slots is not None:
+                results[clinic['name']] = chair_slots
+            else:
+                results[clinic['name']] = {}
+
+        await browser.close()
+
+    return results
+
+
+async def scrape_all_stransa_clinics_with_offset(
+    clinics: List[Dict[str, str]],
+    headless: bool = True,
+    progress_callback: callable = None,
+    current_offset: int = 0,
+    total_all: int = 0
+) -> Dict[str, Dict[str, List[int]]]:
+    """
+    全てのStransa分院をスクレイピング（オフセット付き進捗表示用）
+
+    Args:
+        clinics: 分院設定リスト
+        headless: ヘッドレスモードで実行するか
+        progress_callback: 進捗コールバック関数 (clinic_name, current, total) -> None
+        current_offset: 現在のオフセット（dent-sys分院数）
+        total_all: 全分院数
+
+    Returns:
+        {分院名: {チェア名: [スロット時間のリスト]}} の辞書
+    """
+    results = {}
+
+    # stransa分院のみカウント
+    stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=headless)
+
+        for idx, clinic in enumerate(stransa_clinics):
+            # 進捗コールバックを呼び出し（オフセット付き）
+            if progress_callback:
+                progress_callback(clinic['name'], current_offset + idx + 1, total_all)
 
             logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
 

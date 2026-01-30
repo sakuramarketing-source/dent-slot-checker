@@ -6,7 +6,10 @@ import glob
 import subprocess
 import sys
 import yaml
-from flask import Blueprint, jsonify, request, current_app
+import asyncio
+import threading
+import queue
+from flask import Blueprint, jsonify, request, current_app, Response
 
 bp = Blueprint('results', __name__)
 
@@ -198,3 +201,101 @@ def run_check():
             'success': False,
             'message': str(e)
         }), 500
+
+
+@bp.route('/check-stream', methods=['GET'])
+def run_check_stream():
+    """SSEで進捗を送信しながらチェックを実行"""
+    project_root = current_app.config['PROJECT_ROOT']
+
+    def generate():
+        progress_queue = queue.Queue()
+        result_holder = {'result': None, 'error': None}
+
+        def progress_callback(clinic_name, current, total):
+            progress_queue.put({
+                'type': 'progress',
+                'clinic': clinic_name,
+                'current': current,
+                'total': total
+            })
+
+        def run_async_check():
+            try:
+                # src.mainをインポート
+                import sys
+                sys.path.insert(0, project_root)
+                from src.main import run_with_progress
+
+                # asyncio.run()で非同期関数を実行
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(
+                        run_with_progress(
+                            progress_callback=progress_callback,
+                            headless=True,
+                            output_formats=['json']
+                        )
+                    )
+                    result_holder['result'] = result
+                finally:
+                    loop.close()
+
+            except Exception as e:
+                import traceback
+                result_holder['error'] = str(e) + '\n' + traceback.format_exc()
+            finally:
+                progress_queue.put({'type': 'done'})
+
+        # 別スレッドで非同期チェックを実行
+        thread = threading.Thread(target=run_async_check)
+        thread.start()
+
+        # 進捗をSSEとして送信
+        while True:
+            try:
+                msg = progress_queue.get(timeout=300)  # 5分タイムアウト
+
+                if msg['type'] == 'progress':
+                    data = json.dumps({
+                        'type': 'progress',
+                        'clinic': msg['clinic'],
+                        'current': msg['current'],
+                        'total': msg['total']
+                    }, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+
+                elif msg['type'] == 'done':
+                    if result_holder['error']:
+                        data = json.dumps({
+                            'type': 'error',
+                            'message': result_holder['error']
+                        }, ensure_ascii=False)
+                    else:
+                        data = json.dumps({
+                            'type': 'complete',
+                            'summary': result_holder['result'].get('summary', {})
+                        }, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                    break
+
+            except queue.Empty:
+                # タイムアウト
+                data = json.dumps({
+                    'type': 'error',
+                    'message': 'Timeout waiting for progress'
+                }, ensure_ascii=False)
+                yield f"data: {data}\n\n"
+                break
+
+        thread.join(timeout=10)
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+    )
