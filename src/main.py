@@ -20,6 +20,7 @@ from .scraper import scrape_all_clinics
 from .scraper_stransa import scrape_all_stransa_clinics, scrape_all_stransa_clinics_with_offset
 from .slot_analyzer import analyze_doctor_slots, check_clinic_availability, count_30min_blocks
 from .output_writer import save_results, format_summary
+from .report_writer import ScrapingReport
 
 
 # ロギング設定
@@ -254,6 +255,12 @@ async def run_with_progress(
     exclude_patterns = get_exclude_patterns(config)
     slot_settings = get_slot_settings(config)
 
+    # スクレイピングレポートを作成
+    scrape_report = ScrapingReport(config={
+        'exclude_patterns': exclude_patterns,
+        'slot_settings': slot_settings
+    })
+
     # システム別に分院を分類
     dent_sys_clinics = [
         c for c in config.get('dent_sys_clinics', [])
@@ -299,6 +306,14 @@ async def run_with_progress(
         all_results.extend(dent_analysis['results'])
         clinics_with_availability += dent_analysis['summary']['clinics_with_availability']
 
+        # レポートに追加
+        for result in dent_analysis['results']:
+            clinic_report = scrape_report.create_clinic_report(result['clinic'], 'dent-sys')
+            clinic_report.start()
+            for detail in result.get('details', []):
+                clinic_report.add_staff_found(detail['doctor'], detail['blocks'])
+            clinic_report.complete('success' if result['result'] else 'warning')
+
     # Stransa スクレイピング（オフセット付き）
     if stransa_clinics:
         logger.info("=== Stransa スクレイピング開始 ===")
@@ -314,6 +329,14 @@ async def run_with_progress(
         stransa_analysis = analyze_results(stransa_scrape_results, slot_settings, 'stransa')
         all_results.extend(stransa_analysis['results'])
         clinics_with_availability += stransa_analysis['summary']['clinics_with_availability']
+
+        # レポートに追加
+        for result in stransa_analysis['results']:
+            clinic_report = scrape_report.create_clinic_report(result['clinic'], 'stransa')
+            clinic_report.start()
+            for detail in result.get('details', []):
+                clinic_report.add_staff_found(detail['doctor'], detail['blocks'])
+            clinic_report.complete('success' if result['result'] else 'warning')
 
     # 統合結果を作成
     check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
@@ -335,6 +358,11 @@ async def run_with_progress(
 
     for f in saved_files:
         logger.info(f"結果保存: {f}")
+
+    # スクレイピングレポートを保存
+    scrape_report.complete()
+    report_path = scrape_report.save(output_dir)
+    logger.info(f"スクレイピングレポート保存: {report_path}")
 
     return combined_results
 
