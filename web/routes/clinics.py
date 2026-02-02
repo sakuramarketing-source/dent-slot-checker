@@ -17,12 +17,20 @@ def load_clinics_config():
 
 
 def save_clinics_config(data):
-    """clinics.yamlに保存"""
+    """clinics.yamlに保存（GCS同期あり）"""
     config_path = current_app.config['CONFIG_PATH']
     clinics_path = os.path.join(config_path, 'clinics.yaml')
 
     with open(clinics_path, 'w', encoding='utf-8') as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    # GCSにアップロード（有効な場合のみ）
+    try:
+        from src.gcs_storage import upload_config_file, is_gcs_enabled
+        if is_gcs_enabled():
+            upload_config_file(clinics_path, 'clinics.yaml')
+    except Exception:
+        pass  # GCSエラーは無視してローカル保存を優先
 
 
 @bp.route('/', methods=['GET'])

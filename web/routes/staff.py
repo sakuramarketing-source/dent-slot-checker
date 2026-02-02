@@ -22,12 +22,20 @@ def load_staff_rules():
 
 
 def save_staff_rules(data):
-    """staff_rules.yamlに保存"""
+    """staff_rules.yamlに保存（GCS同期あり）"""
     config_path = current_app.config['CONFIG_PATH']
     staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
 
     with open(staff_rules_path, 'w', encoding='utf-8') as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    # GCSにアップロード（有効な場合のみ）
+    try:
+        from src.gcs_storage import upload_config_file, is_gcs_enabled
+        if is_gcs_enabled():
+            upload_config_file(staff_rules_path, 'staff_rules.yaml')
+    except Exception:
+        pass  # GCSエラーは無視してローカル保存を優先
 
 
 def load_clinics_config():

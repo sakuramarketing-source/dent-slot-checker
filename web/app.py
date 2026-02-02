@@ -2,12 +2,15 @@
 
 import os
 import sys
+import logging
 from flask import Flask
 
 # 親ディレクトリをパスに追加（srcモジュールを使用するため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from web.routes import main, staff, clinics, rules, results, monitor
+
+logger = logging.getLogger(__name__)
 
 
 def create_app():
@@ -22,6 +25,15 @@ def create_app():
     app.config['PROJECT_ROOT'] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     app.config['CONFIG_PATH'] = os.path.join(app.config['PROJECT_ROOT'], 'config')
     app.config['OUTPUT_PATH'] = os.path.join(app.config['PROJECT_ROOT'], 'output')
+
+    # GCSから設定ファイルをダウンロード（有効な場合のみ）
+    try:
+        from src.gcs_storage import download_config_files, is_gcs_enabled
+        if is_gcs_enabled():
+            logger.info("GCSから設定ファイルをダウンロード中...")
+            download_config_files(app.config['CONFIG_PATH'])
+    except Exception as e:
+        logger.warning(f"GCS初期化をスキップ: {e}")
 
     # Blueprintを登録
     app.register_blueprint(main.bp)
