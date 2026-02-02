@@ -27,6 +27,9 @@ async function loadStaff() {
 
     try {
         const response = await fetch('/api/staff/');
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
         const data = await response.json();
 
         if (Object.keys(data).length === 0) {
@@ -113,6 +116,10 @@ async function handleToggle(checkbox) {
             body: JSON.stringify({ name })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.success) {
@@ -156,6 +163,10 @@ async function handleCategoryClick(event) {
             body: JSON.stringify({ name, category })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (!data.success) {
@@ -187,6 +198,10 @@ async function syncStaff() {
             }
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.success) {
@@ -198,6 +213,14 @@ async function syncStaff() {
                 .map(([clinic, count]) => `${clinic}: ${count}名`)
                 .join(', ');
             statusEl.textContent += ` (${counts})`;
+
+            // 新規検出スタッフがあれば表示
+            if (data.new_staff && Object.keys(data.new_staff).length > 0) {
+                const newStaffList = Object.entries(data.new_staff)
+                    .map(([clinic, staff]) => `${clinic}: ${staff.join(', ')}`)
+                    .join('\n');
+                alert(`新規検出されたスタッフ:\n${newStaffList}`);
+            }
 
             // スタッフ一覧を再読み込み
             await loadStaff();
@@ -226,6 +249,10 @@ async function updateMemo(input, clinic, name) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, memo })
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
 
         const data = await response.json();
         if (!data.success) {
@@ -278,6 +305,10 @@ async function handleTagInput(event, input, clinic, name) {
             body: JSON.stringify({ name, tags: newTags })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+
         const data = await response.json();
         if (data.success) {
             // UIを更新
@@ -312,6 +343,10 @@ async function removeTag(btn, clinic, name, tagToRemove) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, tags: newTags })
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
 
         const data = await response.json();
         if (data.success) {

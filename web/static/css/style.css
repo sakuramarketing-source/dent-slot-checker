@@ -735,3 +735,234 @@ h1 {
     background: #fdf2f2;
     border-radius: 4px;
 }
+
+/* 監視ダッシュボード */
+.issues-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.issues-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.issue-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 0.75rem;
+    border-left: 3px solid #e74c3c;
+    background: #fdf2f2;
+    border-radius: 0 4px 4px 0;
+    gap: 0.75rem;
+}
+
+.issue-item.warning {
+    border-left-color: #f39c12;
+    background: #fef9e7;
+}
+
+.issue-item.info {
+    border-left-color: #3498db;
+    background: #e8f4fd;
+}
+
+.issue-icon {
+    font-weight: bold;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.issue-item.error .issue-icon {
+    color: #e74c3c;
+}
+
+.issue-item.warning .issue-icon {
+    color: #f39c12;
+}
+
+.issue-item.info .issue-icon {
+    color: #3498db;
+}
+
+.no-issues {
+    padding: 1rem;
+    text-align: center;
+    color: #27ae60;
+    background: #e8f5e9;
+    border-radius: 4px;
+}
+
+.history-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.history-table th,
+.history-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.history-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.history-table tr:hover {
+    background: #f8f9fa;
+}
+
+.status-tag {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.status-tag.completed,
+.status-tag.success {
+    background: #d5f4e6;
+    color: #27ae60;
+}
+
+.status-tag.error {
+    background: #fde8e8;
+    color: #e74c3c;
+}
+
+.status-tag.warning {
+    background: #fef9e7;
+    color: #f39c12;
+}
+
+.status-tag.running {
+    background: #e8f4fd;
+    color: #3498db;
+}
+
+.btn-small {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+/* モーダル */
+.modal {
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    overflow-y: auto;
+}
+
+.modal-content {
+    background: white;
+    margin: 3% auto;
+    padding: 2rem;
+    width: 90%;
+    max-width: 1000px;
+    border-radius: 8px;
+    position: relative;
+}
+
+.modal-close {
+    position: absolute;
+    right: 1.5rem;
+    top: 1rem;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #7f8c8d;
+}
+
+.modal-close:hover {
+    color: #2c3e50;
+}
+
+.clinic-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.staff-list-compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0;
+    list-style: none;
+}
+
+.staff-chip {
+    background: #e8f4fd;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+}
+
+.staff-chip.skipped {
+    background: #fef9e7;
+    color: #856404;
+}
+
+.staff-chip.zero {
+    background: #fde8e8;
+    color: #721c24;
+}
+
+.error-message {
+    color: #e74c3c;
+    background: #fdf2f2;
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+}
+
+.warning-message {
+    color: #856404;
+    background: #fef9e7;
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+}
+
+.summary-details {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ecf0f1;
+    color: #7f8c8d;
+}
+
+.status-completed,
+.status-success {
+    color: #27ae60;
+}
+
+.status-error {
+    color: #e74c3c;
+}
+
+.status-warning {
+    color: #f39c12;
+}
+
+.status-running {
+    color: #3498db;
+}

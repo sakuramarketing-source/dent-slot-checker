@@ -7,7 +7,7 @@ from flask import Flask
 # 親ディレクトリをパスに追加（srcモジュールを使用するため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from web.routes import main, staff, clinics, rules, results
+from web.routes import main, staff, clinics, rules, results, monitor
 
 
 def create_app():
@@ -29,6 +29,7 @@ def create_app():
     app.register_blueprint(clinics.bp, url_prefix='/api/clinics')
     app.register_blueprint(rules.bp, url_prefix='/api/rules')
     app.register_blueprint(results.bp, url_prefix='/api/results')
+    app.register_blueprint(monitor.bp, url_prefix='/monitor')
 
     return app
 

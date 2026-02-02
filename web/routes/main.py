@@ -3,7 +3,7 @@
 import os
 import json
 import glob
-from flask import Blueprint, render_template, current_app
+from flask import Blueprint, render_template, current_app, make_response
 
 bp = Blueprint('main', __name__)
 
@@ -30,7 +30,11 @@ def get_latest_result():
 def index():
     """ダッシュボード"""
     result = get_latest_result()
-    return render_template('index.html', result=result)
+    response = make_response(render_template('index.html', result=result))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @bp.route('/staff')

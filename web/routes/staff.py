@@ -337,19 +337,34 @@ def sync_staff():
         if 'staff_by_clinic' not in staff_rules:
             staff_rules['staff_by_clinic'] = {}
 
-        for clinic_name, all_staff in sync_results.items():
+        new_staff_by_clinic = {}
+
+        for clinic_name, scraped_staff in sync_results.items():
             if clinic_name not in staff_rules['staff_by_clinic']:
                 staff_rules['staff_by_clinic'][clinic_name] = {}
 
-            # all_staff リストを保存
-            staff_rules['staff_by_clinic'][clinic_name]['all_staff'] = all_staff
+            clinic_config = staff_rules['staff_by_clinic'][clinic_name]
+
+            # 既存のスタッフリストを取得
+            existing_staff = set(clinic_config.get('all_staff', []))
+            scraped_set = set(scraped_staff)
+
+            # 新規検出されたスタッフを記録
+            new_staff = scraped_set - existing_staff
+            if new_staff:
+                new_staff_by_clinic[clinic_name] = sorted(list(new_staff))
+
+            # マージ（既存 + 新規）
+            merged_staff = existing_staff | scraped_set
+            clinic_config['all_staff'] = sorted(list(merged_staff))
 
         save_staff_rules(staff_rules)
 
         return jsonify({
             'success': True,
             'message': 'スタッフ同期完了',
-            'results': {k: len(v) for k, v in sync_results.items()}
+            'results': {k: len(v) for k, v in sync_results.items()},
+            'new_staff': new_staff_by_clinic
         })
 
     except Exception as e:

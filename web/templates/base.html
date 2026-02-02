@@ -17,6 +17,7 @@
             <li><a href="/clinics" class="{% if request.endpoint == 'main.clinics_page' %}active{% endif %}">分院管理</a></li>
             <li><a href="/rules" class="{% if request.endpoint == 'main.rules_page' %}active{% endif %}">ルール設定</a></li>
             <li><a href="/results" class="{% if request.endpoint == 'main.results_page' %}active{% endif %}">結果一覧</a></li>
+            <li><a href="/monitor/" class="{% if request.path.startswith('/monitor') %}active{% endif %}">監視</a></li>
         </ul>
     </nav>
 

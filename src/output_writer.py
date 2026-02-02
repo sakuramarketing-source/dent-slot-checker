@@ -2,6 +2,7 @@
 
 import json
 import csv
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any
@@ -11,6 +12,8 @@ def write_json(results: Dict[str, Any], output_path: Path) -> None:
     """JSON形式で出力"""
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def write_csv(results: Dict[str, Any], output_path: Path) -> None:

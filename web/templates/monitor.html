@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+
+{% block title %}監視ダッシュボード - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>監視ダッシュボード</h1>
+<p class="page-description">スクレイピングの実行履歴と問題を確認できます。</p>
+
+<!-- 最新実行サマリー -->
+<div id="latestSummary" class="result-summary">
+    <h2>最新実行サマリー</h2>
+    <div class="loading">読み込み中...</div>
+</div>
+
+<!-- 問題検出セクション -->
+<div id="issuesSection" class="issues-container">
+    <h2>問題検出</h2>
+    <div class="loading">読み込み中...</div>
+</div>
+
+<!-- 実行履歴 -->
+<div class="history-container">
+    <h2>実行履歴</h2>
+    <div id="historyList" class="history-list">
+        <div class="loading">読み込み中...</div>
+    </div>
+</div>
+
+<!-- 詳細モーダル -->
+<div id="detailModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeModal()">&times;</span>
+        <div id="detailContent"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 最新サマリーを読み込み
+async function loadLatestSummary() {
+    const container = document.getElementById('latestSummary');
+
+    try {
+        const response = await fetch('/monitor/api/reports');
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        const reports = await response.json();
+
+        if (reports.length === 0) {
+            container.innerHTML = `
+                <h2>最新実行サマリー</h2>
+                <div class="no-data">レポートがありません。手動チェックを実行してください。</div>
+            `;
+            return;
+        }
+
+        const latest = reports[0];
+        const summary = latest.summary || {};
+        const duration = latest.duration_seconds ? `${Math.round(latest.duration_seconds)}秒` : '-';
+        const startTime = latest.started_at ? new Date(latest.started_at).toLocaleString('ja-JP') : '-';
+
+        container.innerHTML = `
+            <h2>最新実行サマリー</h2>
+            <div class="summary-stats">
+                <div class="stat-box">
+                    <span class="stat-value">${startTime}</span>
+                    <span class="stat-label">実行日時</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value status-${latest.status}">${latest.status}</span>
+                    <span class="stat-label">ステータス</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${duration}</span>
+                    <span class="stat-label">所要時間</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${summary.successful_clinics || 0} / ${summary.total_clinics || 0}</span>
+                    <span class="stat-label">成功分院</span>
+                </div>
+            </div>
+            <div class="summary-details">
+                <p>処理スタッフ: ${summary.total_staff_processed || 0}名 / スキップ: ${summary.total_staff_skipped || 0}名 / スロット0: ${summary.total_staff_zero_slots || 0}名</p>
+            </div>
+        `;
+    } catch (error) {
+        container.innerHTML = `
+            <h2>最新実行サマリー</h2>
+            <div class="error">エラー: ${error.message}</div>
+        `;
+    }
+}
+
+// 問題を読み込み
+async function loadIssues() {
+    const container = document.getElementById('issuesSection');
+
+    try {
+        const response = await fetch('/monitor/api/issues');
+        if (!response.ok) {
+            if (response.status === 404) {
+                container.innerHTML = `
+                    <h2>問題検出</h2>
+                    <div class="no-data">レポートがありません。</div>
+                `;
+                return;
+            }
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+        const issues = await response.json();
+
+        let html = '<h2>問題検出</h2>';
+
+        const errorCount = issues.clinic_errors?.length || 0;
+        const warningCount = issues.clinic_warnings?.length || 0;
+        const zeroSlotCount = issues.zero_slots?.length || 0;
+        const excludedCount = issues.excluded_by_pattern?.length || 0;
+
+        if (errorCount === 0 && warningCount === 0 && zeroSlotCount === 0 && excludedCount === 0) {
+            html += '<div class="no-issues">問題は検出されていません。</div>';
+        } else {
+            html += '<div class="issues-list">';
+
+            if (errorCount > 0) {
+                html += `<div class="issue-item error">
+                    <span class="issue-icon">!</span>
+                    <span>エラーのある分院: ${errorCount}件</span>
+                    <details><summary>詳細</summary><ul>
+                        ${issues.clinic_errors.map(e => `<li>${e.clinic}: ${e.error}</li>`).join('')}
+                    </ul></details>
+                </div>`;
+            }
+
+            if (warningCount > 0) {
+                html += `<div class="issue-item warning">
+                    <span class="issue-icon">!</span>
+                    <span>警告のある分院: ${warningCount}件</span>
+                    <details><summary>詳細</summary><ul>
+                        ${issues.clinic_warnings.map(w => `<li>${w.clinic}: ${w.message}</li>`).join('')}
+                    </ul></details>
+                </div>`;
+            }
+
+            if (zeroSlotCount > 0) {
+                html += `<div class="issue-item info">
+                    <span class="issue-icon">i</span>
+                    <span>スロット0のスタッフ: ${zeroSlotCount}名</span>
+                    <details><summary>詳細</summary><ul>
+                        ${issues.zero_slots.slice(0, 20).map(z => `<li>${z.clinic}: ${z.staff}</li>`).join('')}
+                        ${zeroSlotCount > 20 ? `<li>...他${zeroSlotCount - 20}名</li>` : ''}
+                    </ul></details>
+                </div>`;
+            }
+
+            if (excludedCount > 0) {
+                html += `<div class="issue-item info">
+                    <span class="issue-icon">i</span>
+                    <span>パターン除外されたスタッフ: ${excludedCount}名</span>
+                    <details><summary>詳細</summary><ul>
+                        ${issues.excluded_by_pattern.slice(0, 20).map(e => `<li>${e.clinic}: ${e.staff} (${e.pattern})</li>`).join('')}
+                        ${excludedCount > 20 ? `<li>...他${excludedCount - 20}名</li>` : ''}
+                    </ul></details>
+                </div>`;
+            }
+
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `
+            <h2>問題検出</h2>
+            <div class="error">エラー: ${error.message}</div>
+        `;
+    }
+}
+
+// 実行履歴を読み込み
+async function loadHistory() {
+    const container = document.getElementById('historyList');
+
+    try {
+        const response = await fetch('/monitor/api/reports');
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        const reports = await response.json();
+
+        if (reports.length === 0) {
+            container.innerHTML = '<div class="no-data">履歴がありません。</div>';
+            return;
+        }
+
+        let html = '<table class="history-table"><thead><tr>' +
+            '<th>実行日時</th><th>ステータス</th><th>所要時間</th><th>分院数</th><th>詳細</th>' +
+            '</tr></thead><tbody>';
+
+        for (const report of reports.slice(0, 20)) {
+            const startTime = report.started_at ? new Date(report.started_at).toLocaleString('ja-JP') : '-';
+            const duration = report.duration_seconds ? `${Math.round(report.duration_seconds)}秒` : '-';
+            const summary = report.summary || {};
+
+            html += `<tr>
+                <td>${startTime}</td>
+                <td><span class="status-tag ${report.status}">${report.status}</span></td>
+                <td>${duration}</td>
+                <td>${summary.successful_clinics || 0} / ${summary.total_clinics || 0}</td>
+                <td><button class="btn btn-small" onclick="showDetail('${report.run_id}')">詳細</button></td>
+            </tr>`;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+// 詳細モーダルを表示
+async function showDetail(runId) {
+    const modal = document.getElementById('detailModal');
+    const content = document.getElementById('detailContent');
+
+    content.innerHTML = '<div class="loading">読み込み中...</div>';
+    modal.style.display = 'block';
+
+    try {
+        const response = await fetch(`/monitor/api/reports/${runId}`);
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        const report = await response.json();
+
+        let html = `<h2>実行詳細: ${runId}</h2>`;
+        html += `<p>チェック対象日: ${report.check_date || '-'}</p>`;
+        html += `<p>ステータス: <span class="status-tag ${report.status}">${report.status}</span></p>`;
+
+        html += '<div class="clinic-details">';
+
+        for (const clinic of report.clinics || []) {
+            const statusClass = clinic.status === 'success' ? 'has-availability' :
+                               clinic.status === 'error' ? 'no-availability' : '';
+
+            html += `<div class="clinic-card ${statusClass}">
+                <div class="clinic-header">
+                    <h3>${clinic.name}</h3>
+                    <span class="status-badge ${clinic.status}">${clinic.status}</span>
+                </div>
+                <div class="clinic-body">
+                    <p>システム: ${clinic.system} / 処理時間: ${clinic.duration_seconds ? clinic.duration_seconds.toFixed(2) + '秒' : '-'}</p>
+                    <p>検出スタッフ: ${clinic.total_staff_processed}名 / システム内: ${clinic.total_staff_in_system}名</p>
+
+                    ${clinic.staff_found.length > 0 ? `
+                    <details>
+                        <summary>検出されたスタッフ (${clinic.staff_found.length}名)</summary>
+                        <ul class="staff-list-compact">
+                            ${clinic.staff_found.map(s => `<li class="staff-chip">${s.name}: ${s.slots}スロット</li>`).join('')}
+                        </ul>
+                    </details>` : ''}
+
+                    ${clinic.staff_skipped.length > 0 ? `
+                    <details>
+                        <summary>スキップされたスタッフ (${clinic.staff_skipped.length}名)</summary>
+                        <ul class="staff-list-compact">
+                            ${clinic.staff_skipped.map(s => `<li class="staff-chip skipped">${s.name} (${s.reason})</li>`).join('')}
+                        </ul>
+                    </details>` : ''}
+
+                    ${clinic.staff_zero_slots.length > 0 ? `
+                    <details>
+                        <summary>スロット0のスタッフ (${clinic.staff_zero_slots.length}名)</summary>
+                        <ul class="staff-list-compact">
+                            ${clinic.staff_zero_slots.map(s => `<li class="staff-chip zero">${s}</li>`).join('')}
+                        </ul>
+                    </details>` : ''}
+
+                    ${clinic.error ? `<p class="error-message">エラー: ${clinic.error}</p>` : ''}
+                    ${clinic.warning_message ? `<p class="warning-message">警告: ${clinic.warning_message}</p>` : ''}
+                </div>
+            </div>`;
+        }
+
+        html += '</div>';
+        content.innerHTML = html;
+    } catch (error) {
+        content.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+    }
+}
+
+// モーダルを閉じる
+function closeModal() {
+    document.getElementById('detailModal').style.display = 'none';
+}
+
+// モーダル外をクリックで閉じる
+window.onclick = function(event) {
+    const modal = document.getElementById('detailModal');
+    if (event.target === modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// ページ読み込み時にデータを取得
+loadLatestSummary();
+loadIssues();
+loadHistory();
+</script>
+{% endblock %}

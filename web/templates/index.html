@@ -97,7 +97,7 @@ document.getElementById('runCheckBtn').addEventListener('click', function() {
                 eventSource.close();
                 status.textContent = `チェック完了！ ${data.summary.clinics_with_availability}/${data.summary.total_clinics} 分院で空きあり`;
                 status.className = 'status-message success';
-                setTimeout(() => location.reload(), 1500);
+                setTimeout(() => location.reload(), 2500);
             } else if (data.type === 'error') {
                 // エラー
                 eventSource.close();
