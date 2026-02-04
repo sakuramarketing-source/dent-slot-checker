@@ -301,21 +301,31 @@ def run_check_stream():
     )
 
 
-def run_background_check(task_id: str, project_root: str):
+def run_background_check(task_id: str, project_root: str, config_path: str, output_path: str):
     """バックグラウンドでチェックを実行"""
     import sys
     import asyncio
     import traceback
+    import logging
     from pathlib import Path
+
+    # ロギング設定
+    logger = logging.getLogger(__name__)
+    logger.info(f"Background task {task_id} started")
+    logger.info(f"project_root: {project_root}")
+    logger.info(f"config_path: {config_path}")
+    logger.info(f"output_path: {output_path}")
+
     sys.path.insert(0, project_root)
 
     from src.main import run_with_progress
     from web.task_manager import TaskManager
 
-    task_manager = TaskManager(output_dir=Path(project_root) / 'output')
+    task_manager = TaskManager(output_dir=Path(output_path))
 
     def progress_callback(clinic_name: str, current: int, total: int):
         """進捗コールバック - TaskManagerに状態を保存"""
+        logger.info(f"Progress: {clinic_name} ({current}/{total})")
         task_manager.update_progress(task_id, current, total, clinic_name)
 
     try:
@@ -326,6 +336,7 @@ def run_background_check(task_id: str, project_root: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            logger.info("Starting run_with_progress")
             result = loop.run_until_complete(
                 run_with_progress(
                     progress_callback=progress_callback,
@@ -333,6 +344,7 @@ def run_background_check(task_id: str, project_root: str):
                     output_formats=['json']
                 )
             )
+            logger.info(f"run_with_progress completed: {len(result.get('results', []))} results")
             # タスクを完了としてマーク
             task_manager.complete_task(task_id, result)
         finally:
@@ -341,6 +353,7 @@ def run_background_check(task_id: str, project_root: str):
     except Exception as e:
         # エラーを記録
         error_msg = str(e) + '\n' + traceback.format_exc()
+        logger.error(f"Background task {task_id} failed: {error_msg}")
         task_manager.fail_task(task_id, error_msg)
 
 
@@ -351,6 +364,7 @@ def check_start():
     from web.task_manager import TaskManager
 
     project_root = current_app.config['PROJECT_ROOT']
+    config_path = current_app.config['CONFIG_PATH']
     output_path = current_app.config['OUTPUT_PATH']
 
     # タスクマネージャーを初期化
@@ -362,7 +376,7 @@ def check_start():
     # バックグラウンドスレッドで実行
     thread = threading.Thread(
         target=run_background_check,
-        args=(task_id, project_root),
+        args=(task_id, project_root, config_path, output_path),
         daemon=True  # メインプロセス終了時にスレッドも終了
     )
     thread.start()
