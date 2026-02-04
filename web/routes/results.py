@@ -376,8 +376,13 @@ def run_background_check(task_id: str, project_root: str, config_path: str, outp
                 logger.warning("No results returned - checking summary")
                 logger.warning(f"Summary: {result.get('summary', {})}")
 
+            # ファイルシステムのバッファがフラッシュされるまで待機
+            import time
+            time.sleep(1.0)  # 1秒待機してファイル書き込み完了を保証
+
             # タスクを完了としてマーク
             task_manager.complete_task(task_id, result)
+            logger.info(f"Task {task_id} marked as completed with {len(result.get('results', []))} results")
         finally:
             loop.close()
 
@@ -433,4 +438,10 @@ def check_status(task_id):
     if not task:
         return jsonify({'error': 'Task not found'}), 404
 
-    return jsonify(task.to_dict())
+    response = task.to_dict()
+
+    # 完了時は完全な結果データを含める（即座の表示用）
+    if task.status == 'completed' and task.result:
+        response['result_data'] = task.result
+
+    return jsonify(response)

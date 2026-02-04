@@ -1,6 +1,7 @@
 """バックグラウンドタスク管理"""
 
 import json
+import os
 import threading
 import time
 from datetime import datetime
@@ -57,7 +58,16 @@ class TaskManager:
 
         self.output_dir = output_dir or Path('output')
         self.tasks_dir = self.output_dir / 'tasks'
-        self.tasks_dir.mkdir(parents=True, exist_ok=True)
+
+        # ディレクトリ作成の検証
+        try:
+            self.tasks_dir.mkdir(parents=True, exist_ok=True)
+            if not self.tasks_dir.exists():
+                raise OSError(f"Failed to create tasks directory: {self.tasks_dir}")
+        except Exception as e:
+            import logging
+            logging.error(f"TaskManager initialization error: {e}")
+            raise
 
         # メモリ内タスクキャッシュ（起動中のみ有効）
         self._tasks: Dict[str, TaskInfo] = {}
@@ -142,8 +152,15 @@ class TaskManager:
     def _save_task_to_file(self, task: TaskInfo):
         """タスクをファイルに保存"""
         task_file = self.tasks_dir / f'task_{task.task_id}.json'
-        with open(task_file, 'w', encoding='utf-8') as f:
-            json.dump(task.to_dict(), f, ensure_ascii=False, indent=2)
+        try:
+            with open(task_file, 'w', encoding='utf-8') as f:
+                json.dump(task.to_dict(), f, ensure_ascii=False, indent=2)
+                f.flush()  # Pythonバッファをフラッシュ
+                os.fsync(f.fileno())  # ディスクへ強制同期
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to save task file {task_file}: {e}")
+            # タスクはメモリに残っているので、ファイル保存失敗でも継続
 
     def _load_task_from_file(self, task_id: str) -> Optional[TaskInfo]:
         """ファイルからタスクを読み込み"""

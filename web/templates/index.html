@@ -116,7 +116,15 @@ document.getElementById('runCheckBtn').addEventListener('click', async function(
                 const summary = taskStatus.result?.summary || {};
                 status.textContent = `チェック完了！ ${summary.clinics_with_availability || 0}/${summary.total_clinics || 0} 分院で空きあり`;
                 status.className = 'status-message success';
-                setTimeout(() => location.reload(), 2500);  // 2.5秒後にリロード
+
+                // 結果データの存在確認
+                if (taskStatus.result_data && taskStatus.result_data.results) {
+                    console.log('Task result received:', taskStatus.result_data.results.length, 'clinics');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    console.warn('No result_data in task status, using longer delay');
+                    setTimeout(() => location.reload(), 5000);
+                }
             } else if (taskStatus.status === 'failed') {
                 completed = true;
                 status.textContent = 'エラー: ' + (taskStatus.error || '不明なエラー');

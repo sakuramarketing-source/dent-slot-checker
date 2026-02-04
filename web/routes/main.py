@@ -10,19 +10,31 @@ bp = Blueprint('main', __name__)
 
 def get_latest_result():
     """最新のチェック結果を取得"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     output_path = current_app.config['OUTPUT_PATH']
     json_files = glob.glob(os.path.join(output_path, 'slot_check_*.json'))
 
+    logger.info(f"get_latest_result: Found {len(json_files)} result files")
+
     if not json_files:
+        logger.warning("No result files found in output directory")
         return None
 
     # 最新のファイルを取得
     latest_file = max(json_files, key=os.path.getmtime)
+    logger.info(f"Latest result file: {os.path.basename(latest_file)}")
 
     try:
         with open(latest_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
+            data = json.load(f)
+
+        result_count = len(data.get('results', []))
+        logger.info(f"Loaded result with {result_count} clinics")
+        return data
+    except Exception as e:
+        logger.error(f"Failed to load result file {latest_file}: {e}")
         return None
 
 
