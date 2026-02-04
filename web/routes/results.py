@@ -299,3 +299,93 @@ def run_check_stream():
             'X-Accel-Buffering': 'no'
         }
     )
+
+
+def run_background_check(task_id: str, project_root: str):
+    """バックグラウンドでチェックを実行"""
+    import sys
+    import asyncio
+    import traceback
+    from pathlib import Path
+    sys.path.insert(0, project_root)
+
+    from src.main import run_with_progress
+    from web.task_manager import TaskManager
+
+    task_manager = TaskManager(output_dir=Path(project_root) / 'output')
+
+    def progress_callback(clinic_name: str, current: int, total: int):
+        """進捗コールバック - TaskManagerに状態を保存"""
+        task_manager.update_progress(task_id, current, total, clinic_name)
+
+    try:
+        # タスクをrunningに変更
+        task_manager.update_task(task_id, status='running')
+
+        # asyncio.run()で非同期実行
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                run_with_progress(
+                    progress_callback=progress_callback,
+                    headless=True,
+                    output_formats=['json']
+                )
+            )
+            # タスクを完了としてマーク
+            task_manager.complete_task(task_id, result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        # エラーを記録
+        error_msg = str(e) + '\n' + traceback.format_exc()
+        task_manager.fail_task(task_id, error_msg)
+
+
+@bp.route('/check-start', methods=['POST'])
+def check_start():
+    """バックグラウンドでチェックを開始"""
+    from pathlib import Path
+    from web.task_manager import TaskManager
+
+    project_root = current_app.config['PROJECT_ROOT']
+    output_path = current_app.config['OUTPUT_PATH']
+
+    # タスクマネージャーを初期化
+    task_manager = TaskManager(output_dir=Path(output_path))
+
+    # タスクを作成
+    task_id = task_manager.create_task()
+
+    # バックグラウンドスレッドで実行
+    thread = threading.Thread(
+        target=run_background_check,
+        args=(task_id, project_root),
+        daemon=True  # メインプロセス終了時にスレッドも終了
+    )
+    thread.start()
+
+    return jsonify({
+        'task_id': task_id,
+        'status': 'pending',
+        'message': 'Task started successfully'
+    }), 202  # 202 Accepted
+
+
+@bp.route('/check-status/<task_id>', methods=['GET'])
+def check_status(task_id):
+    """タスクのステータスを取得"""
+    from pathlib import Path
+    from web.task_manager import TaskManager
+
+    output_path = current_app.config['OUTPUT_PATH']
+    task_manager = TaskManager(output_dir=Path(output_path))
+
+    task = task_manager.get_task(task_id)
+
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+
+    return jsonify(task.to_dict())

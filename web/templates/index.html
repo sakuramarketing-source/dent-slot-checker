@@ -72,52 +72,65 @@
 
 {% block scripts %}
 <script>
-document.getElementById('runCheckBtn').addEventListener('click', function() {
+document.getElementById('runCheckBtn').addEventListener('click', async function() {
     const btn = this;
     const status = document.getElementById('checkStatus');
 
     btn.disabled = true;
     btn.textContent = 'チェック中...';
-    status.textContent = '接続中...';
-    status.className = 'status-message';
+    status.textContent = 'タスクを開始中...';
+    status.className = 'status-message progress';
 
-    // EventSourceでSSE接続
-    const eventSource = new EventSource('/api/results/check-stream');
+    try {
+        // 1. タスク開始
+        const startResponse = await fetch('/api/results/check-start', {
+            method: 'POST'
+        });
 
-    eventSource.onmessage = function(event) {
-        try {
-            const data = JSON.parse(event.data);
+        if (!startResponse.ok) {
+            throw new Error('Failed to start task');
+        }
 
-            if (data.type === 'progress') {
-                // 進捗表示
-                status.textContent = `${data.clinic} をチェック中... (${data.current}/${data.total})`;
+        const startData = await startResponse.json();
+        const taskId = startData.task_id;
+
+        // 2. ポーリングで進捗監視（2秒間隔）
+        let completed = false;
+        while (!completed) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            const statusResponse = await fetch(`/api/results/check-status/${taskId}`);
+
+            if (!statusResponse.ok) {
+                throw new Error('Failed to get task status');
+            }
+
+            const taskStatus = await statusResponse.json();
+
+            if (taskStatus.status === 'running' && taskStatus.progress) {
+                const p = taskStatus.progress;
+                status.textContent = `${p.current_clinic} をチェック中... (${p.current}/${p.total})`;
                 status.className = 'status-message progress';
-            } else if (data.type === 'complete') {
-                // 完了
-                eventSource.close();
-                status.textContent = `チェック完了！ ${data.summary.clinics_with_availability}/${data.summary.total_clinics} 分院で空きあり`;
+            } else if (taskStatus.status === 'completed') {
+                completed = true;
+                const summary = taskStatus.result?.summary || {};
+                status.textContent = `チェック完了！ ${summary.clinics_with_availability || 0}/${summary.total_clinics || 0} 分院で空きあり`;
                 status.className = 'status-message success';
-                setTimeout(() => location.reload(), 2500);
-            } else if (data.type === 'error') {
-                // エラー
-                eventSource.close();
-                status.textContent = 'エラー: ' + data.message;
+                setTimeout(() => location.reload(), 2500);  // 2.5秒後にリロード
+            } else if (taskStatus.status === 'failed') {
+                completed = true;
+                status.textContent = 'エラー: ' + (taskStatus.error || '不明なエラー');
                 status.className = 'status-message error';
                 btn.disabled = false;
                 btn.textContent = '手動チェック実行';
             }
-        } catch (e) {
-            console.error('Parse error:', e);
         }
-    };
-
-    eventSource.onerror = function(event) {
-        eventSource.close();
-        status.textContent = 'エラー: 接続が切断されました';
+    } catch (error) {
+        status.textContent = 'エラー: ' + error.message;
         status.className = 'status-message error';
         btn.disabled = false;
         btn.textContent = '手動チェック実行';
-    };
+    }
 });
 </script>
 {% endblock %}

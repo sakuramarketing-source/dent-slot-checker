@@ -1,0 +1,172 @@
+"""バックグラウンドタスク管理"""
+
+import json
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Optional, Any
+from dataclasses import dataclass, asdict
+
+
+@dataclass
+class TaskProgress:
+    """タスク進捗情報"""
+    current: int = 0
+    total: int = 0
+    current_clinic: str = ""
+
+
+@dataclass
+class TaskInfo:
+    """タスク情報"""
+    task_id: str
+    status: str  # pending, running, completed, failed
+    started_at: str
+    updated_at: str
+    completed_at: Optional[str] = None
+    progress: Optional[TaskProgress] = None
+    error: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict:
+        """辞書に変換（JSON化用）"""
+        data = asdict(self)
+        if self.progress:
+            data['progress'] = asdict(self.progress)
+        return data
+
+
+class TaskManager:
+    """タスク管理クラス（シングルトン）"""
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, output_dir: Path = None):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self, output_dir: Path = None):
+        if self._initialized:
+            return
+
+        self.output_dir = output_dir or Path('output')
+        self.tasks_dir = self.output_dir / 'tasks'
+        self.tasks_dir.mkdir(parents=True, exist_ok=True)
+
+        # メモリ内タスクキャッシュ（起動中のみ有効）
+        self._tasks: Dict[str, TaskInfo] = {}
+        self._tasks_lock = threading.Lock()
+
+        self._initialized = True
+
+    def create_task(self) -> str:
+        """新しいタスクを作成してIDを返す"""
+        task_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        task_info = TaskInfo(
+            task_id=task_id,
+            status='pending',
+            started_at=datetime.now().isoformat(),
+            updated_at=datetime.now().isoformat(),
+            progress=TaskProgress(current=0, total=0)
+        )
+
+        with self._tasks_lock:
+            self._tasks[task_id] = task_info
+            self._save_task_to_file(task_info)
+
+        return task_id
+
+    def get_task(self, task_id: str) -> Optional[TaskInfo]:
+        """タスク情報を取得"""
+        with self._tasks_lock:
+            # メモリキャッシュを優先
+            if task_id in self._tasks:
+                return self._tasks[task_id]
+
+            # ファイルから読み込み
+            return self._load_task_from_file(task_id)
+
+    def update_task(self, task_id: str, **kwargs):
+        """タスク情報を更新"""
+        with self._tasks_lock:
+            task = self._tasks.get(task_id) or self._load_task_from_file(task_id)
+            if not task:
+                return
+
+            for key, value in kwargs.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+
+            task.updated_at = datetime.now().isoformat()
+            self._tasks[task_id] = task
+            self._save_task_to_file(task)
+
+    def update_progress(self, task_id: str, current: int, total: int, clinic_name: str = ""):
+        """進捗を更新"""
+        with self._tasks_lock:
+            task = self._tasks.get(task_id)
+            if task:
+                task.progress = TaskProgress(
+                    current=current,
+                    total=total,
+                    current_clinic=clinic_name
+                )
+                task.updated_at = datetime.now().isoformat()
+                self._save_task_to_file(task)
+
+    def complete_task(self, task_id: str, result: Dict[str, Any]):
+        """タスクを完了としてマーク"""
+        self.update_task(
+            task_id,
+            status='completed',
+            completed_at=datetime.now().isoformat(),
+            result=result
+        )
+
+    def fail_task(self, task_id: str, error: str):
+        """タスクを失敗としてマーク"""
+        self.update_task(
+            task_id,
+            status='failed',
+            completed_at=datetime.now().isoformat(),
+            error=error
+        )
+
+    def _save_task_to_file(self, task: TaskInfo):
+        """タスクをファイルに保存"""
+        task_file = self.tasks_dir / f'task_{task.task_id}.json'
+        with open(task_file, 'w', encoding='utf-8') as f:
+            json.dump(task.to_dict(), f, ensure_ascii=False, indent=2)
+
+    def _load_task_from_file(self, task_id: str) -> Optional[TaskInfo]:
+        """ファイルからタスクを読み込み"""
+        task_file = self.tasks_dir / f'task_{task_id}.json'
+        if not task_file.exists():
+            return None
+
+        try:
+            with open(task_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # progressを復元
+            if data.get('progress'):
+                data['progress'] = TaskProgress(**data['progress'])
+
+            return TaskInfo(**data)
+        except Exception:
+            return None
+
+    def cleanup_old_tasks(self, max_age_hours: int = 24):
+        """古いタスクファイルを削除"""
+        cutoff_time = time.time() - (max_age_hours * 3600)
+
+        for task_file in self.tasks_dir.glob('task_*.json'):
+            if task_file.stat().st_mtime < cutoff_time:
+                task_file.unlink()
