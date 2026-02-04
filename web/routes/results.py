@@ -309,14 +309,39 @@ def run_background_check(task_id: str, project_root: str, config_path: str, outp
     import logging
     from pathlib import Path
 
-    # ロギング設定
+    # ロギング基本設定（バックグラウンドスレッド用）
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        force=True  # 既存の設定を上書き
+    )
     logger = logging.getLogger(__name__)
+
     logger.info(f"Background task {task_id} started")
     logger.info(f"project_root: {project_root}")
     logger.info(f"config_path: {config_path}")
     logger.info(f"output_path: {output_path}")
 
     sys.path.insert(0, project_root)
+
+    # GCSから設定ファイルを再ダウンロード
+    try:
+        from src.gcs_storage import download_config_files, is_gcs_enabled
+        if is_gcs_enabled():
+            logger.info("GCSから設定ファイルをダウンロード中...")
+            success = download_config_files(config_path)
+            logger.info(f"GCSダウンロード結果: {success}")
+        else:
+            logger.info("GCS無効（ローカル設定ファイルを使用）")
+    except Exception as e:
+        logger.warning(f"GCS初期化エラー: {e}", exc_info=True)
+
+    # 設定ファイルの存在確認
+    config_dir = Path(config_path)
+    clinics_yaml = config_dir / 'clinics.yaml'
+    logger.info(f"clinics.yaml exists: {clinics_yaml.exists()}")
+    if clinics_yaml.exists():
+        logger.info(f"clinics.yaml size: {clinics_yaml.stat().st_size} bytes")
 
     from src.main import run_with_progress
     from web.task_manager import TaskManager
@@ -345,6 +370,12 @@ def run_background_check(task_id: str, project_root: str, config_path: str, outp
                 )
             )
             logger.info(f"run_with_progress completed: {len(result.get('results', []))} results")
+            if result.get('results'):
+                logger.info(f"First result: {result['results'][0].get('clinic', 'unknown')}")
+            else:
+                logger.warning("No results returned - checking summary")
+                logger.warning(f"Summary: {result.get('summary', {})}")
+
             # タスクを完了としてマーク
             task_manager.complete_task(task_id, result)
         finally:
