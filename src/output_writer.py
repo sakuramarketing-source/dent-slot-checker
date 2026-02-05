@@ -3,9 +3,14 @@
 import json
 import csv
 import os
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any
+
+from src.gcs_storage import save_result_to_gcs, is_gcs_enabled
+
+logger = logging.getLogger(__name__)
 
 
 def write_json(results: Dict[str, Any], output_path: Path) -> None:
@@ -105,6 +110,15 @@ def save_results(
 
         if fmt == 'json':
             write_json(results, output_path)
+
+            # GCSにも保存（Cloud Run用）
+            if is_gcs_enabled():
+                filename = output_path.name
+                if save_result_to_gcs(filename, results):
+                    logger.info(f"結果ファイルをGCSに保存: {filename}")
+                else:
+                    logger.warning(f"GCS保存失敗: {filename}")
+
         elif fmt == 'csv':
             write_csv(results, output_path)
 
