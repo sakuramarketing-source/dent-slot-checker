@@ -4,10 +4,19 @@ import json
 import os
 import threading
 import time
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, asdict
+
+from src.gcs_task_storage import (
+    save_task_to_gcs,
+    load_task_from_gcs,
+    is_gcs_enabled
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -150,34 +159,53 @@ class TaskManager:
         )
 
     def _save_task_to_file(self, task: TaskInfo):
-        """タスクをファイルに保存"""
+        """タスクをファイルとGCSに保存"""
+        task_dict = task.to_dict()
+
+        # 1. GCSに保存（Cloud Run用）
+        if is_gcs_enabled():
+            if not save_task_to_gcs(task.task_id, task_dict):
+                logger.warning(f"GCS保存失敗: task_{task.task_id}")
+
+        # 2. ローカルファイルに保存（ローカル開発用）
         task_file = self.tasks_dir / f'task_{task.task_id}.json'
         try:
             with open(task_file, 'w', encoding='utf-8') as f:
-                json.dump(task.to_dict(), f, ensure_ascii=False, indent=2)
+                json.dump(task_dict, f, ensure_ascii=False, indent=2)
                 f.flush()  # Pythonバッファをフラッシュ
                 os.fsync(f.fileno())  # ディスクへ強制同期
         except Exception as e:
-            import logging
-            logging.error(f"Failed to save task file {task_file}: {e}")
+            logger.error(f"ローカルファイル保存失敗 {task_file}: {e}")
             # タスクはメモリに残っているので、ファイル保存失敗でも継続
 
     def _load_task_from_file(self, task_id: str) -> Optional[TaskInfo]:
-        """ファイルからタスクを読み込み"""
+        """ファイルまたはGCSからタスクを読み込み"""
+
+        # 1. GCSから読み込み（Cloud Run用）
+        if is_gcs_enabled():
+            task_data = load_task_from_gcs(task_id)
+            if task_data:
+                # progressを復元
+                if task_data.get('progress'):
+                    task_data['progress'] = TaskProgress(**task_data['progress'])
+                return TaskInfo(**task_data)
+
+        # 2. ローカルファイルから読み込み（ローカル開発用）
         task_file = self.tasks_dir / f'task_{task_id}.json'
         if not task_file.exists():
             return None
 
         try:
             with open(task_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                task_data = json.load(f)
 
             # progressを復元
-            if data.get('progress'):
-                data['progress'] = TaskProgress(**data['progress'])
+            if task_data.get('progress'):
+                task_data['progress'] = TaskProgress(**task_data['progress'])
 
-            return TaskInfo(**data)
-        except Exception:
+            return TaskInfo(**task_data)
+        except Exception as e:
+            logger.error(f"ローカルファイル読み込みエラー: {e}")
             return None
 
     def cleanup_old_tasks(self, max_age_hours: int = 24):
