@@ -42,20 +42,22 @@
         <div class="clinic-body">
             <p><strong>30分ブロック数:</strong> {{ clinic_result.total_30min_blocks }}</p>
             {% if clinic_result.details %}
+            {% set clinic_idx = loop.index %}
+            <div class="clinic-timeline" id="clinic-tl-{{ clinic_idx }}"></div>
             <details>
                 <summary>詳細を見る</summary>
-                <ul class="detail-list">
+                <div class="detail-list">
                     {% for detail in clinic_result.details %}
-                    <li>
-                        <strong>{{ detail.doctor }}</strong>: {{ detail.blocks }}ブロック
-                        <ul>
-                            {% for time in detail.times %}
-                            <li>{{ time }}</li>
-                            {% endfor %}
-                        </ul>
-                    </li>
+                    <div class="staff-detail-item">
+                        <div class="staff-detail-header">
+                            <strong>{{ detail.doctor }}</strong>
+                            <span style="color:#7f8c8d">{{ detail.blocks }}ブロック</span>
+                        </div>
+                        <div id="staff-tl-{{ clinic_idx }}-{{ loop.index }}"></div>
+                        <div class="staff-detail-times">{{ detail.times | join(', ') }}</div>
+                    </div>
                     {% endfor %}
-                </ul>
+                </div>
             </details>
             {% endif %}
         </div>
@@ -72,6 +74,28 @@
 
 {% block scripts %}
 <script>
+// タイムライン描画
+(function() {
+    const clinicData = {{ result.results | tojson if result else '[]' }};
+    clinicData.forEach(function(clinic, ci) {
+        const idx = ci + 1;
+        // クリニック全体タイムライン
+        const clinicEl = document.getElementById('clinic-tl-' + idx);
+        if (clinicEl && clinic.details) {
+            clinicEl.innerHTML = buildClinicTimelineHTML(clinic.details);
+        }
+        // スタッフ別タイムライン
+        if (clinic.details) {
+            clinic.details.forEach(function(detail, si) {
+                const staffEl = document.getElementById('staff-tl-' + idx + '-' + (si + 1));
+                if (staffEl) {
+                    staffEl.innerHTML = buildStaffTimelineHTML(detail.times, detail.category || 'unknown');
+                }
+            });
+        }
+    });
+})();
+
 document.getElementById('runCheckBtn').addEventListener('click', async function() {
     const btn = this;
     const status = document.getElementById('checkStatus');

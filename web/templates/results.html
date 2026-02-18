@@ -106,20 +106,23 @@ async function loadResultByDate(date) {
                             </div>
                         ` : ''}
                         ${result.details && result.details.length > 0 ? `
+                            ${buildClinicTimelineHTML(result.details)}
                             <details>
                                 <summary>詳細を見る</summary>
-                                <ul class="detail-list">
+                                <div class="detail-list">
                                     ${result.details.map(detail => `
-                                        <li>
-                                            <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
-                                            <strong>${detail.doctor}</strong>: ${detail.blocks}ブロック
-                                            ${detail.memo ? `<span class="staff-memo">(${detail.memo})</span>` : ''}
-                                            <ul>
-                                                ${detail.times.map(time => `<li>${time}</li>`).join('')}
-                                            </ul>
-                                        </li>
+                                        <div class="staff-detail-item">
+                                            <div class="staff-detail-header">
+                                                <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
+                                                <strong>${detail.doctor}</strong>
+                                                <span style="color:#7f8c8d">${detail.blocks}ブロック</span>
+                                                ${detail.memo ? `<span class="staff-memo">(${detail.memo})</span>` : ''}
+                                            </div>
+                                            ${buildStaffTimelineHTML(detail.times, detail.category || 'unknown')}
+                                            <div class="staff-detail-times">${detail.times.join(', ')}</div>
+                                        </div>
                                     `).join('')}
-                                </ul>
+                                </div>
                             </details>
                         ` : ''}
                     </div>
