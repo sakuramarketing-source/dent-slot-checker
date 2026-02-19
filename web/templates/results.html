@@ -97,7 +97,7 @@ async function loadResultByDate(date) {
                         </span>
                     </div>
                     <div class="clinic-body">
-                        <p><strong>30分ブロック数:</strong> ${result.total_30min_blocks}</p>
+                        <p><strong>30分空き枠数:</strong> ${result.total_30min_blocks}</p>
                         ${(catSummary.doctor || catSummary.hygienist) ? `
                             <div class="category-summary">
                                 ${catSummary.doctor ? `<span class="cat-stat doctor">Dr: ${catSummary.doctor}</span>` : ''}
@@ -115,7 +115,7 @@ async function loadResultByDate(date) {
                                             <div class="staff-detail-header">
                                                 <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
                                                 <strong>${detail.doctor}</strong>
-                                                <span style="color:#7f8c8d">${detail.blocks}ブロック</span>
+                                                <span style="color:#7f8c8d">${detail.blocks}枠</span>
                                                 ${detail.memo ? `<span class="staff-memo">(${detail.memo})</span>` : ''}
                                             </div>
                                             ${buildTimeTagsHTML(detail.times, detail.category || 'unknown')}
