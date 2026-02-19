@@ -110,7 +110,7 @@ function buildTimelineLegendHTML(details) {
         cats.add(d.category || 'unknown');
     }
     const labels = { doctor: 'Dr', hygienist: 'DH', unknown: '他' };
-    let html = '<div class="timeline-header"><span>空き枠:</span>';
+    let html = '<div class="timeline-header"><span>ブロック:</span>';
     for (const cat of ['doctor', 'hygienist', 'unknown']) {
         if (cats.has(cat)) {
             html += `<span class="timeline-legend"><span class="timeline-legend-dot ${cat}"></span>${labels[cat]}</span>`;

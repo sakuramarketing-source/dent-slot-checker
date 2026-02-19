@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>ルール設定</h1>
-<p class="page-description">空き枠判定のルールを設定します。</p>
+<p class="page-description">ブロック判定のルールを設定します。</p>
 
 <div id="rulesContainer" class="rules-container">
     <div class="loading">読み込み中...</div>
@@ -27,14 +27,14 @@ async function loadRules() {
                     <label for="consecutiveSlots">連続スロット数（30分 = 6スロット）</label>
                     <input type="number" id="consecutiveSlots" name="consecutive_slots_required"
                            value="${data.consecutive_slots_required}" min="1" max="20">
-                    <small>何スロット連続で空きがあれば1空き枠とカウントするか（5分×6 = 30分）</small>
+                    <small>何スロット連続で空きがあれば1ブロックとカウントするか（5分×6 = 30分）</small>
                 </div>
 
                 <div class="form-group">
-                    <label for="minBlocks">必要空き枠数</label>
+                    <label for="minBlocks">必要ブロック数</label>
                     <input type="number" id="minBlocks" name="minimum_blocks_required"
                            value="${data.minimum_blocks_required}" min="1" max="20">
-                    <small>何枠以上あれば「空きあり」と判定するか</small>
+                    <small>何ブロック以上あれば「不足」と判定するか</small>
                 </div>
 
                 <div class="form-group">

@@ -40,7 +40,7 @@
             </span>
         </div>
         <div class="clinic-body">
-            <p><strong>30分空き枠数:</strong> {{ clinic_result.total_30min_blocks }}</p>
+            <p><strong>30分ブロック数:</strong> {{ clinic_result.total_30min_blocks }}</p>
             {% if clinic_result.details %}
             {% set clinic_idx = loop.index %}
             <div class="clinic-timeline" id="clinic-tl-{{ clinic_idx }}"></div>
@@ -52,7 +52,7 @@
                         <div class="staff-detail-header">
                             <span class="staff-category-badge {{ detail.category or 'unknown' }}">{{ 'Dr' if detail.category == 'doctor' else ('DH' if detail.category == 'hygienist' else '--') }}</span>
                             <strong>{{ detail.doctor }}</strong>
-                            <span style="color:#7f8c8d">{{ detail.blocks }}枠</span>
+                            <span style="color:#7f8c8d">{{ detail.blocks }}ブロック</span>
                         </div>
                         <div class="time-tags">
                             {% for t in detail.times %}
