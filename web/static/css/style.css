@@ -715,16 +715,49 @@ h1 {
     position: relative;
 }
 
+.timeline-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.7rem;
+    color: #95a5a6;
+}
+
+.timeline-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.timeline-legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+
+.timeline-legend-dot.doctor { background: #27ae60; }
+.timeline-legend-dot.hygienist { background: #9b59b6; }
+.timeline-legend-dot.unknown { background: #3498db; }
+
 .timeline-bar {
     position: relative;
-    height: 20px;
-    background: #ecf0f1;
+    height: 22px;
+    background: repeating-linear-gradient(
+        45deg,
+        #f0f0f0,
+        #f0f0f0 3px,
+        #e8e8e8 3px,
+        #e8e8e8 6px
+    );
     border-radius: 3px;
     overflow: hidden;
+    border: 1px solid #ddd;
 }
 
 .timeline-bar.compact {
-    height: 14px;
+    height: 16px;
 }
 
 .timeline-slot {
@@ -733,12 +766,14 @@ h1 {
     bottom: 0;
     background: #3498db;
     border-radius: 2px;
-    opacity: 0.85;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, box-shadow 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    cursor: pointer;
 }
 
 .timeline-slot:hover {
-    opacity: 1;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    z-index: 1;
 }
 
 .timeline-slot.doctor {

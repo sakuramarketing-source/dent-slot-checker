@@ -103,6 +103,23 @@ function buildTimelineLabelsHTML() {
     return html;
 }
 
+// 凡例HTML
+function buildTimelineLegendHTML(details) {
+    const cats = new Set();
+    for (const d of details) {
+        cats.add(d.category || 'unknown');
+    }
+    const labels = { doctor: 'Dr', hygienist: 'DH', unknown: '他' };
+    let html = '<div class="timeline-header"><span>空き枠:</span>';
+    for (const cat of ['doctor', 'hygienist', 'unknown']) {
+        if (cats.has(cat)) {
+            html += `<span class="timeline-legend"><span class="timeline-legend-dot ${cat}"></span>${labels[cat]}</span>`;
+        }
+    }
+    html += '<span style="margin-left:auto">斜線=予約済</span></div>';
+    return html;
+}
+
 // クリニック全体の統合タイムラインHTML
 // details: [{ doctor, blocks, times, category? }]
 function buildClinicTimelineHTML(details) {
@@ -112,7 +129,7 @@ function buildClinicTimelineHTML(details) {
         allSlots += buildTimelineSlotsHTML(d.times, d.category || 'unknown');
     }
     const nowIndicator = buildNowIndicatorHTML();
-    return `<div class="clinic-timeline"><div class="timeline-container"><div class="timeline-bar compact">${allSlots}${nowIndicator}</div>${buildTimelineLabelsHTML()}</div></div>`;
+    return `<div class="clinic-timeline"><div class="timeline-container">${buildTimelineLegendHTML(details)}<div class="timeline-bar compact">${allSlots}${nowIndicator}</div>${buildTimelineLabelsHTML()}</div></div>`;
 }
 
 // スタッフ別タイムラインHTML（詳細展開内）
