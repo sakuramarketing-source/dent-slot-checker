@@ -857,10 +857,38 @@ h1 {
     font-size: 0.9rem;
 }
 
-.staff-detail-times {
-    font-size: 0.75rem;
-    color: #95a5a6;
-    margin-top: 2px;
+/* タイムタグ（詳細展開内の時間チップ） */
+.time-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.time-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.time-tag.doctor {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+}
+
+.time-tag.hygienist {
+    background: #f3e5f5;
+    color: #7b1fa2;
+    border: 1px solid #ce93d8;
+}
+
+.time-tag.unknown {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
 }
 
 /* ユーティリティ */

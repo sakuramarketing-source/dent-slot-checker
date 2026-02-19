@@ -118,8 +118,7 @@ async function loadResultByDate(date) {
                                                 <span style="color:#7f8c8d">${detail.blocks}ブロック</span>
                                                 ${detail.memo ? `<span class="staff-memo">(${detail.memo})</span>` : ''}
                                             </div>
-                                            ${buildStaffTimelineHTML(detail.times, detail.category || 'unknown')}
-                                            <div class="staff-detail-times">${detail.times.join(', ')}</div>
+                                            ${buildTimeTagsHTML(detail.times, detail.category || 'unknown')}
                                         </div>
                                     `).join('')}
                                 </div>

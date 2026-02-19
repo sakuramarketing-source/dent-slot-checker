@@ -132,10 +132,13 @@ function buildClinicTimelineHTML(details) {
     return `<div class="clinic-timeline"><div class="timeline-container">${buildTimelineLegendHTML(details)}<div class="timeline-bar compact">${allSlots}${nowIndicator}</div>${buildTimelineLabelsHTML()}</div></div>`;
 }
 
-// スタッフ別タイムラインHTML（詳細展開内）
-function buildStaffTimelineHTML(times, cssClass) {
+// スタッフ別タイムタグHTML（詳細展開内）
+function buildTimeTagsHTML(times, cssClass) {
     if (!times || times.length === 0) return '';
-    const slots = buildTimelineSlotsHTML(times, cssClass || 'unknown');
-    const nowIndicator = buildNowIndicatorHTML();
-    return `<div class="timeline-container"><div class="timeline-bar">${slots}${nowIndicator}</div></div>`;
+    let html = '<div class="time-tags">';
+    for (const t of times) {
+        html += `<span class="time-tag ${cssClass || 'unknown'}">${t}</span>`;
+    }
+    html += '</div>';
+    return html;
 }

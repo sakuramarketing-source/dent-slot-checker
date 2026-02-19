@@ -50,11 +50,15 @@
                     {% for detail in clinic_result.details %}
                     <div class="staff-detail-item">
                         <div class="staff-detail-header">
+                            <span class="staff-category-badge {{ detail.category or 'unknown' }}">{{ 'Dr' if detail.category == 'doctor' else ('DH' if detail.category == 'hygienist' else '--') }}</span>
                             <strong>{{ detail.doctor }}</strong>
                             <span style="color:#7f8c8d">{{ detail.blocks }}ブロック</span>
                         </div>
-                        <div id="staff-tl-{{ clinic_idx }}-{{ loop.index }}"></div>
-                        <div class="staff-detail-times">{{ detail.times | join(', ') }}</div>
+                        <div class="time-tags">
+                            {% for t in detail.times %}
+                            <span class="time-tag {{ detail.category or 'unknown' }}">{{ t }}</span>
+                            {% endfor %}
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -83,15 +87,6 @@
         const clinicEl = document.getElementById('clinic-tl-' + idx);
         if (clinicEl && clinic.details) {
             clinicEl.innerHTML = buildClinicTimelineHTML(clinic.details);
-        }
-        // スタッフ別タイムライン
-        if (clinic.details) {
-            clinic.details.forEach(function(detail, si) {
-                const staffEl = document.getElementById('staff-tl-' + idx + '-' + (si + 1));
-                if (staffEl) {
-                    staffEl.innerHTML = buildStaffTimelineHTML(detail.times, detail.category || 'unknown');
-                }
-            });
         }
     });
 })();
