@@ -5,6 +5,7 @@
 {% block content %}
 <h1>スタッフ管理</h1>
 <p class="page-description">各スタッフの有効/無効と職種（Dr: ドクター / DH: 歯科衛生士）を設定します。無効にしたスタッフはチェック対象から除外されます。</p>
+<p class="page-description" style="margin-top:4px;color:#e67e22"><strong>WEB受付</strong>: ONのスタッフのみ空き枠集計に含まれます。未設定の分院は全スタッフ対象。</p>
 
 <div class="staff-actions">
     <button id="syncBtn" class="btn btn-primary" onclick="syncStaff()">
@@ -55,6 +56,10 @@ async function loadStaff() {
                             <label class="toggle-switch ${isAutoDisabled ? 'auto-disabled' : ''}">
                                 <input type="checkbox" ${staff.enabled ? 'checked' : ''} ${isAutoDisabled ? 'disabled' : ''} onchange="handleToggle(this)">
                                 <span class="toggle-slider"></span>
+                            </label>
+                            <label class="web-booking-toggle ${isDisabled ? 'disabled-toggle' : ''}" title="WEB予約受付">
+                                <input type="checkbox" ${staff.web_booking ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onchange="handleWebBookingToggle(this)">
+                                <span class="web-booking-label ${staff.web_booking ? 'active' : ''}">WEB</span>
                             </label>
                             <span class="staff-name">${staff.name}</span>
                             ${isAutoDisabled ? '<span class="auto-tag">自動除外</span>' : ''}
@@ -123,6 +128,37 @@ async function handleToggle(checkbox) {
             } else {
                 staffItem.classList.add('disabled');
                 staffItem.querySelectorAll('.cat-btn').forEach(btn => btn.disabled = true);
+            }
+        } else {
+            alert('保存に失敗しました: ' + (data.error || ''));
+            checkbox.checked = !checkbox.checked;
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+        checkbox.checked = !checkbox.checked;
+    }
+}
+
+async function handleWebBookingToggle(checkbox) {
+    const staffItem = checkbox.closest('.staff-item');
+    const clinic = staffItem.dataset.clinic;
+    const name = staffItem.dataset.name;
+    const label = checkbox.nextElementSibling;
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}/web-booking`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.web_booking) {
+                label.classList.add('active');
+            } else {
+                label.classList.remove('active');
             }
         } else {
             alert('保存に失敗しました: ' + (data.error || ''));

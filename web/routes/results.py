@@ -23,6 +23,69 @@ def load_staff_rules():
         return yaml.safe_load(f) or {'staff_by_clinic': {}}
 
 
+def load_clinics_settings():
+    """clinics.yamlのsettingsを読み込む"""
+    config_path = current_app.config['CONFIG_PATH']
+    clinics_path = os.path.join(config_path, 'clinics.yaml')
+
+    if not os.path.exists(clinics_path):
+        return {}
+
+    with open(clinics_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f) or {}
+    return config.get('settings', {})
+
+
+def apply_web_booking_filter(data, staff_rules, settings=None):
+    """web_bookingリストに基づいて結果をフィルタリング
+
+    web_bookingが設定されている分院は、WEB予約受付スタッフのみ表示。
+    未設定の分院は従来通り全スタッフ表示。
+    """
+    staff_by_clinic = staff_rules.get('staff_by_clinic', {})
+    min_blocks = (settings or {}).get('minimum_blocks_required', 4)
+
+    has_filter = False
+    clinics_with_availability = 0
+
+    for result in data.get('results', []):
+        clinic_name = result.get('clinic', '')
+        clinic_config = staff_by_clinic.get(clinic_name, {})
+        web_booking = clinic_config.get('web_booking', [])
+
+        if not web_booking:
+            # web_booking未設定 → フィルタなし
+            if result.get('result', False):
+                clinics_with_availability += 1
+            continue
+
+        has_filter = True
+        web_booking_set = set(web_booking)
+
+        # web_bookingリストのスタッフのみに絞る
+        filtered_details = [
+            d for d in result.get('details', [])
+            if d.get('doctor', '') in web_booking_set
+        ]
+        result['details'] = filtered_details
+
+        # 合計を再計算
+        total = sum(d.get('blocks', 0) for d in filtered_details)
+        result['total_30min_blocks'] = total
+
+        # 判定を再計算
+        result['result'] = total >= min_blocks
+
+        if result['result']:
+            clinics_with_availability += 1
+
+    # サマリーを再計算
+    if has_filter and 'summary' in data:
+        data['summary']['clinics_with_availability'] = clinics_with_availability
+
+    return data
+
+
 def get_result_files():
     """結果ファイルのリストを取得"""
     output_path = current_app.config['OUTPUT_PATH']
@@ -62,6 +125,12 @@ def get_latest_result():
     try:
         with open(latest['path'], 'r', encoding='utf-8') as f:
             data = json.load(f)
+
+        # WEB予約受付フィルタを適用
+        staff_rules = load_staff_rules()
+        settings = load_clinics_settings()
+        data = apply_web_booking_filter(data, staff_rules, settings)
+
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -153,6 +222,10 @@ def get_result_with_categories():
                 'hygienist': hygienist_blocks,
                 'other': other_blocks
             }
+
+        # WEB予約受付フィルタを適用（職種分類後に実行）
+        settings = load_clinics_settings()
+        data = apply_web_booking_filter(data, staff_rules, settings)
 
         return jsonify(data)
 

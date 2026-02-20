@@ -372,6 +372,41 @@ h1 {
     cursor: not-allowed;
 }
 
+/* WEB予約受付トグル */
+.web-booking-toggle {
+    flex-shrink: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.web-booking-toggle input {
+    display: none;
+}
+
+.web-booking-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    border: 1px solid #bdc3c7;
+    background: #ecf0f1;
+    color: #95a5a6;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.web-booking-label.active {
+    background: #e67e22;
+    border-color: #e67e22;
+    color: white;
+}
+
+.disabled-toggle {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
 /* メモ入力欄 */
 .memo-input {
     flex-shrink: 0;

@@ -116,9 +116,11 @@ def get_all_staff():
         doctors = clinic_config.get('doctors', [])
         hygienists = clinic_config.get('hygienists', [])
         disabled = clinic_config.get('disabled', [])
+        web_booking = set(clinic_config.get('web_booking', []))
 
         result[clinic_name] = {
-            'staff': []
+            'staff': [],
+            'has_web_booking_filter': len(web_booking) > 0
         }
 
         for staff_name in sorted(all_staff_names):
@@ -135,6 +137,9 @@ def get_all_staff():
             # 有効/無効を判定
             is_disabled = staff_name in disabled or auto_disabled
 
+            # WEB予約受付判定
+            is_web_booking = staff_name in web_booking
+
             # メモとタグを取得
             memos = clinic_config.get('memos', {})
             tags = clinic_config.get('tags', {})
@@ -144,6 +149,7 @@ def get_all_staff():
                 'category': category,
                 'enabled': not is_disabled,
                 'auto_disabled': auto_disabled,  # 自動除外（訪問系など）
+                'web_booking': is_web_booking,
                 'memo': memos.get(staff_name, ''),
                 'tags': tags.get(staff_name, [])
             })
@@ -238,6 +244,43 @@ def toggle_staff_enabled(clinic_name):
     save_staff_rules(staff_rules)
 
     return jsonify({'success': True, 'clinic': clinic_name, 'name': staff_name, 'enabled': enabled})
+
+
+@bp.route('/<clinic_name>/web-booking', methods=['POST'])
+def toggle_web_booking(clinic_name):
+    """スタッフのWEB予約受付を切り替え"""
+    data = request.get_json()
+    staff_name = data.get('name')
+
+    if not staff_name:
+        return jsonify({'error': 'name is required'}), 400
+
+    # 設定を読み込み
+    staff_rules = load_staff_rules()
+
+    if 'staff_by_clinic' not in staff_rules:
+        staff_rules['staff_by_clinic'] = {}
+
+    if clinic_name not in staff_rules['staff_by_clinic']:
+        staff_rules['staff_by_clinic'][clinic_name] = {}
+
+    clinic_config = staff_rules['staff_by_clinic'][clinic_name]
+
+    if 'web_booking' not in clinic_config:
+        clinic_config['web_booking'] = []
+
+    # トグル
+    if staff_name in clinic_config['web_booking']:
+        clinic_config['web_booking'].remove(staff_name)
+        web_booking = False
+    else:
+        clinic_config['web_booking'].append(staff_name)
+        web_booking = True
+
+    # 保存
+    save_staff_rules(staff_rules)
+
+    return jsonify({'success': True, 'clinic': clinic_name, 'name': staff_name, 'web_booking': web_booking})
 
 
 @bp.route('/<clinic_name>/memo', methods=['POST'])
