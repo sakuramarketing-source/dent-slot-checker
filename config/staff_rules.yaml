@@ -1,4 +1,7 @@
-special_rules: {}
+special_rules:
+  初診60分:
+  - 名駅さくら歯科
+  - 金沢さくら
 staff_by_clinic:
   ありす歯科:
     all_staff:
@@ -28,6 +31,17 @@ staff_by_clinic:
     - 黒濱MRC
     - 黒濱checkB
     disabled: []
+    web_booking:
+    - 加藤
+    - 古川
+    - 印南
+    - 真鍋
+    - 籔下
+    - 尾関
+    - 岸
+    - 中屋
+    - 粟田
+    - 瀬古
   さくら歯科:
     all_staff:
     - 橋本Ａ
@@ -69,6 +83,21 @@ staff_by_clinic:
     - 訪問⑨
     - 長久手
     disabled: []
+    web_booking:
+    - 今川キャンセル/変更10％台迄
+    - 今川Ｂキャンセル/変更20％台
+    - 今川Cキャンセル/変更30％以
+    - 東Aキャンセル/変更20％台
+    - 酒井A
+    - 菊谷
+    - 堂東
+    - 三島
+    - 柴田
+    - 渡辺
+    - 渡
+    - 尾関
+    - 赤松
+    - 小池
   たんぽぽ歯科:
     all_staff:
     - えりな
@@ -99,6 +128,18 @@ staff_by_clinic:
     - 梶相談
     - 梶ワイヤー
     - 梶小児インビザ
+    web_booking:
+    - えりな
+    - 蔵
+    - 園田
+    - 吉冨
+    - 萩原
+    - 大口
+    - 奥村
+    - 長谷川
+    - 前澤
+    - 山本
+    - 金澤
   クローバー歯科:
     all_staff:
     - ＷＥＢ初診
@@ -117,6 +158,16 @@ staff_by_clinic:
     - 久保
     - 藤田
     - TC/SP
+    web_booking:
+    - 岩井
+    - 蕪木
+    - 高田
+    - 松澤
+    - 井上
+    - 出井
+    - 馬渕
+    - 河野
+    - 久保
   日進赤池たんぽぽ歯科:
     all_staff:
     - ＳＰ/急患
@@ -137,6 +188,10 @@ staff_by_clinic:
     - 阿部
     - 佐藤
     - DHヘルプ
+    web_booking:
+    - 柿崎A
+    - 西山
+    - 久世
   春日井きらり歯科:
     all_staff:
     - 初診・急患
@@ -160,6 +215,14 @@ staff_by_clinic:
     - TC
     - 岡
     - 岡B
+    web_booking:
+    - 鈴木
+    - 沖
+    - 園田
+    - 菊谷
+    - 原
+    - 足立
+    - 渡辺
   春日井アップル歯科:
     all_staff:
     - Dr大城A
@@ -184,6 +247,14 @@ staff_by_clinic:
     - MRC
     - 岡A
     - 岡B
+    web_booking:
+    - Dr大城A
+    - Dr柿崎A
+    - DH佐藤
+    - DH三浦
+    - DH木下
+    - DH萩
+    - DH藤井
   松戸ありす歯科:
     all_staff:
     - 二木
@@ -202,6 +273,11 @@ staff_by_clinic:
     - 松江
     - TC枠
     - SP/急患
+    web_booking:
+    - 永井
+    - 田中さゆ
+    - 青山
+    - 小谷中
   池下さくら歯科:
     all_staff:
     - 橋本
@@ -236,6 +312,14 @@ staff_by_clinic:
     - 訪問浄心②
     - 訪問浄心③
     - 訪問浄心④
+    web_booking:
+    - 高木A
+    - 高木B
+    - 佐分利
+    - 勝野
+    - 神箸
+    - 角正
+    - 園原
   流山ありす歯科・矯正歯科:
     all_staff:
     - 松原
@@ -253,6 +337,13 @@ staff_by_clinic:
     - TC
     - sp/抜糸
     - ＷＥＢ初診
+    web_booking:
+    - 松原
+    - 蕪木
+    - 小川
+    - 橋本
+    - 眞野
+    - 藤田
   流山ハピネス歯科:
     all_staff:
     - 牧村
@@ -287,3 +378,11 @@ staff_by_clinic:
     disabled: []
     doctors: []
     hygienists: []
+    web_booking:
+    - 牧村
+    - 青柳
+    - 松原
+    - 淺野
+    - 兼原
+    - 塩澤
+    - 内山
