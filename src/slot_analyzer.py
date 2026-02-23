@@ -1,6 +1,21 @@
 """空きスロット分析モジュール"""
 
+from collections import Counter
 from typing import List, Dict, Any, Tuple
+
+
+def detect_slot_interval(slot_times: List[int], default: int = 5) -> int:
+    """スロット時間リストから実際のスロット間隔を自動検出"""
+    if len(slot_times) < 2:
+        return default
+    sorted_times = sorted(slot_times)
+    gaps = [sorted_times[i+1] - sorted_times[i] for i in range(len(sorted_times) - 1) if sorted_times[i+1] > sorted_times[i]]
+    if not gaps:
+        return default
+    detected = Counter(gaps).most_common(1)[0][0]
+    if detected in (5, 10, 15, 20, 30):
+        return detected
+    return min((5, 10, 15, 20, 30), key=lambda x: abs(x - detected))
 
 
 def count_consecutive_blocks(
@@ -79,18 +94,26 @@ def analyze_doctor_slots(
             'times': ['9:25-9:55', '14:00-14:30']
         }
     """
-    block_count, block_ranges = count_consecutive_blocks(
-        slot_times, required_consecutive, interval
+    # 実際のスロット間隔を自動検出（分院ごとに異なる可能性: 5分/10分）
+    actual_interval = detect_slot_interval(slot_times, interval)
+    actual_consecutive = 30 // actual_interval  # 30分に必要な連続数
+
+    # 時間範囲表示用にグループを取得
+    _, block_ranges = count_consecutive_blocks(
+        slot_times, actual_consecutive, actual_interval
     )
 
     time_strs = [
-        format_time_range(start, end, interval)
+        format_time_range(start, end, actual_interval)
         for start, end in block_ranges
     ]
 
+    # 正しい30分ブロック数を計算
+    actual_blocks = count_30min_blocks(slot_times, actual_interval, actual_consecutive)
+
     return {
         'doctor': doctor_name,
-        'blocks': block_count,
+        'blocks': actual_blocks,
         'times': time_strs
     }
 

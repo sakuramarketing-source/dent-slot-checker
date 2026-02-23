@@ -139,12 +139,19 @@ async def get_column_headers_from_main_page(
     disabled_staff = disabled_staff or []
 
     try:
-        # ヘッダー行の<th>要素から先生名を取得
-        # 構造: <tr class="d_info"><th><a>先生名</a></th>...</tr>
-        header_cells = await page.locator('tr.d_info th a').all()
+        # ヘッダー行の全<th>要素を取得（時刻列含む）
+        # 構造: <tr class="d_info"><th>時刻</th><th><a>先生名</a></th>...</tr>
+        # col_idx = テーブル上の実際の列番号（ts_set_newのcol引数と一致させる）
+        all_th_cells = await page.locator('tr.d_info th').all()
 
-        for idx, cell in enumerate(header_cells):
-            text = await cell.inner_text()
+        for col_idx, th_cell in enumerate(all_th_cells):
+            # <a>タグを含む<th>のみがスタッフ列
+            a_tags = await th_cell.locator('a').all()
+            if not a_tags:
+                logger.debug(f"列{col_idx}: <a>なし（時刻列等）- スキップ")
+                continue
+
+            text = await a_tags[0].inner_text()
             text = text.strip()
 
             if not text:
@@ -164,14 +171,160 @@ async def get_column_headers_from_main_page(
                 logger.debug(f"除外（無効化）: {text}")
 
             if not excluded:
-                headers[idx] = text
+                headers[col_idx] = text
 
-        logger.info(f"ヘッダー取得完了: {len(headers)}カラム")
+        logger.info(f"ヘッダー取得完了: {len(headers)}カラム（列番号: {list(headers.keys())}）")
 
     except Exception as e:
         logger.error(f"ヘッダー取得エラー: {e}")
 
     return headers
+
+
+async def detect_start_time_from_iframe(frame: Frame, default_hour: int = 8, default_minute: int = 30) -> int:
+    """
+    iframe内のスケジュール表から開始時刻を検出
+
+    dent-sysのスケジュール表では、各行の左端に時刻表示がある。
+    最初の時刻表示を取得して開始時刻を特定する。
+
+    Returns:
+        開始時刻（分単位、例: 8:30 = 510）
+    """
+    default_minutes = default_hour * 60 + default_minute
+
+    try:
+        # 方法1: テーブル行の最初のセルから時刻を探す
+        rows = await frame.locator('table tr').all()
+        for row in rows[:20]:  # 最初の20行を調べる
+            cells = await row.locator('th, td').all()
+            if not cells:
+                continue
+            first_text = (await cells[0].inner_text()).strip()
+            if not first_text:
+                continue
+
+            # "H:MM" or "HH:MM" 形式の時刻を検索
+            time_match = re.match(r'^(\d{1,2}):(\d{2})$', first_text)
+            if time_match:
+                hours = int(time_match.group(1))
+                minutes = int(time_match.group(2))
+                if 0 <= hours <= 23 and 0 <= minutes < 60:
+                    detected = hours * 60 + minutes
+                    logger.info(f"開始時刻を検出: {hours}:{minutes:02d} (row_idx=0)")
+                    return detected
+
+            # 時間のみ（"8" or "9"）の場合
+            if first_text.isdigit():
+                hours = int(first_text)
+                if 6 <= hours <= 12:
+                    # 次のセルや行から分を推測（通常00分）
+                    detected = hours * 60
+                    logger.info(f"開始時刻を検出（時のみ）: {hours}:00 (row_idx=0)")
+                    return detected
+
+        logger.info(f"開始時刻検出できず、デフォルト使用: {default_hour}:{default_minute:02d}")
+    except Exception as e:
+        logger.debug(f"開始時刻検出エラー: {e}")
+
+    return default_minutes
+
+
+async def build_row_time_mapping(frame: Frame, slot_interval: int = 5) -> Dict[int, int]:
+    """
+    iframe内のスケジュール表から row_idx → 実時刻(分) のマッピングを構築
+
+    dent-sysの表構造:
+    - 各時間の最初の行: 左端セルに "9" や "14" 等の時表示
+    - 以降の行: 左端セルに "10", "20", "30" 等の分表示
+    - 昼休み: 行自体が存在しない（スキップされる）
+    - スロット間隔は分院により異なる（5分/10分）
+
+    時間 vs 分の区別ルール: 時間は常に前進する。
+    値を分として解釈した時刻が前の行より戻る場合、それは新しい時間マーカー。
+
+    Returns:
+        {row_idx: time_minutes} の辞書
+    """
+    row_map: Dict[int, int] = {}
+    current_hour: Optional[int] = None
+    row_idx = 0
+
+    try:
+        rows = await frame.locator('table tr').all()
+
+        for row in rows:
+            cells = await row.locator('th, td').all()
+            if len(cells) < 2:
+                continue
+
+            first_text = (await cells[0].inner_text()).strip()
+
+            # "H:MM" or "HH:MM" 形式
+            time_match = re.match(r'^(\d{1,2}):(\d{2})$', first_text)
+            if time_match:
+                current_hour = int(time_match.group(1))
+                current_min = int(time_match.group(2))
+                row_map[row_idx] = current_hour * 60 + current_min
+                row_idx += 1
+                continue
+
+            if first_text.isdigit():
+                val = int(first_text)
+
+                if current_hour is None:
+                    # 最初の数値 → 時間として扱う
+                    if 0 <= val <= 23:
+                        current_hour = val
+                        row_map[row_idx] = current_hour * 60
+                        row_idx += 1
+                        continue
+                else:
+                    # 分として解釈した場合の時刻
+                    candidate_as_minute = current_hour * 60 + val
+                    prev_time = row_map.get(row_idx - 1, -1)
+
+                    if 0 <= val < 60 and candidate_as_minute > prev_time:
+                        # 時間が前進する → 分として扱う
+                        row_map[row_idx] = candidate_as_minute
+                        row_idx += 1
+                        continue
+                    elif 0 <= val <= 23 and val > current_hour:
+                        # 分として解釈すると前進しないが、時間としては前進 → 新しい時間
+                        current_hour = val
+                        row_map[row_idx] = current_hour * 60
+                        row_idx += 1
+                        continue
+                    elif 0 <= val <= 23 and val == current_hour:
+                        # 同じ時間の繰り返し → 分の可能性（0分）
+                        # 前の行が xx:50 で次が xx:00 の場合
+                        candidate_as_hour = val * 60
+                        if candidate_as_hour > prev_time:
+                            current_hour = val
+                            row_map[row_idx] = current_hour * 60
+                            row_idx += 1
+                            continue
+
+            # 空セルだが予約スロット行の可能性（<a>タグがある行）
+            has_links = await row.locator('a').count()
+            if has_links > 0 and current_hour is not None:
+                if (row_idx - 1) in row_map:
+                    row_map[row_idx] = row_map[row_idx - 1] + slot_interval
+                row_idx += 1
+                continue
+
+        if row_map:
+            from .slot_analyzer import minutes_to_time_str
+            first_time = minutes_to_time_str(min(row_map.values()))
+            last_time = minutes_to_time_str(max(row_map.values()))
+            logger.info(f"行-時刻マッピング構築完了: {len(row_map)}行 ({first_time}〜{last_time})")
+        else:
+            logger.warning("行-時刻マッピング構築失敗: テーブル行から時刻を検出できず")
+
+    except Exception as e:
+        logger.error(f"行-時刻マッピング構築エラー: {e}")
+
+    return row_map
 
 
 async def parse_schedule_from_iframe(
@@ -188,49 +341,61 @@ async def parse_schedule_from_iframe(
         frame: iframe の Frame オブジェクト
         headers: {カラムインデックス: 先生名} の辞書
         slot_interval: スロット間隔（分）
-        start_hour: 開始時刻（時）
-        start_minute: 開始時刻（分）
+        start_hour: 開始時刻（フォールバック用）
+        start_minute: 開始時刻（フォールバック用）
 
     Returns:
         {先生名: [スロット時間（分）のリスト]} の辞書
     """
     doctor_slots: Dict[str, List[int]] = {}
 
-    # 開始時刻を分単位に変換（例: 8:30 = 510分）
-    base_time_minutes = start_hour * 60 + start_minute
+    # row_idx → 実時刻のマッピングを構築（昼休みギャップ対応）
+    row_time_map = await build_row_time_mapping(frame, slot_interval)
+
+    # フォールバック: マッピングが空なら従来の線形計算を使用
+    base_time_minutes = None
+    if not row_time_map:
+        base_time_minutes = await detect_start_time_from_iframe(frame, start_hour, start_minute)
+        logger.warning("行-時刻マッピング構築失敗、線形計算にフォールバック")
 
     try:
         # 全ての「新」リンクを取得
-        # HTMLから: <a href="javascript:window.top.ts_set_new(30,0)" class="new">新</a>
         new_links = await frame.locator('a.new').all()
         logger.info(f"「新」リンク数: {len(new_links)}")
 
         if not new_links:
-            # class="new" がない場合、テキストで検索
             new_links = await frame.locator('a:has-text("新")').all()
             logger.info(f"テキスト検索「新」リンク数: {len(new_links)}")
 
+        unmapped_cols = set()
+        unmapped_rows = set()
+
         for link in new_links:
             try:
-                # リンクのhref属性からカラム情報を取得
                 href = await link.get_attribute('href')
                 if not href:
                     continue
 
-                # ts_set_new(col, row) の形式からカラム番号と行番号を抽出
-                # col = カラム（先生）インデックス
-                # row = 行インデックス（時間スロット、0から始まる）
                 match = re.search(r'ts_set_new\((\d+),\s*(\d+)\)', href)
                 if match:
                     col_idx = int(match.group(1))
                     row_idx = int(match.group(2))
 
-                    # 行インデックスを実際の時間（分）に変換
-                    # row_idx=0 → 8:30 (510分), row_idx=1 → 8:35 (515分), ...
-                    time_minutes = base_time_minutes + (row_idx * slot_interval)
+                    # row_idx → 実時刻の変換
+                    if row_time_map:
+                        if row_idx in row_time_map:
+                            time_minutes = row_time_map[row_idx]
+                        else:
+                            # マッピングに存在しない行 → 最も近い行から補間
+                            closest = min(row_time_map.keys(), key=lambda k: abs(k - row_idx))
+                            time_minutes = row_time_map[closest] + (row_idx - closest) * slot_interval
+                            unmapped_rows.add(row_idx)
+                    else:
+                        # フォールバック: 線形計算
+                        time_minutes = base_time_minutes + (row_idx * slot_interval)
 
-                    # カラムが対象外ならスキップ
                     if col_idx not in headers:
+                        unmapped_cols.add(col_idx)
                         continue
 
                     doctor_name = headers[col_idx]
@@ -244,9 +409,17 @@ async def parse_schedule_from_iframe(
                 logger.debug(f"リンク解析エラー: {e}")
                 continue
 
-        # 結果をログ出力
+        if unmapped_cols:
+            logger.warning(f"マッピングされなかったcol値: {sorted(unmapped_cols)}（対象ヘッダーcol: {sorted(headers.keys())}）")
+        if unmapped_rows:
+            logger.warning(f"マッピングされなかったrow値（補間使用）: {sorted(unmapped_rows)}")
+
+        # 結果をログ出力（時間範囲付き）
+        from .slot_analyzer import minutes_to_time_str
         for doctor, slots in doctor_slots.items():
-            logger.info(f"  {doctor}: {len(slots)}スロット")
+            sorted_slots = sorted(slots)
+            time_range = f"{minutes_to_time_str(sorted_slots[0])}-{minutes_to_time_str(sorted_slots[-1])}" if sorted_slots else "なし"
+            logger.info(f"  {doctor}: {len(slots)}スロット ({time_range})")
 
     except Exception as e:
         logger.error(f"iframe解析エラー: {e}")
