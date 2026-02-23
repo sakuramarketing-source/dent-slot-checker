@@ -12,7 +12,13 @@
 
 {% if result %}
 <div class="result-summary">
-    <h2>最新チェック結果</h2>
+    <h2>最新チェック結果
+        <span class="category-filter" id="categoryFilter">
+            <button class="category-filter-btn active" data-filter="all">全て</button>
+            <button class="category-filter-btn" data-filter="doctor">Dr</button>
+            <button class="category-filter-btn" data-filter="hygienist">DH</button>
+        </span>
+    </h2>
     <p class="check-info">
         <strong>チェック対象日:</strong> {{ result.check_date }}<br>
         <strong>チェック日時:</strong> {{ result.checked_at }}
@@ -79,17 +85,100 @@
 
 {% block scripts %}
 <script>
-// タイムライン描画
+// タイムライン描画 + カテゴリフィルタ
 (function() {
     const clinicData = {{ result.results | tojson if result else '[]' }};
-    clinicData.forEach(function(clinic, ci) {
-        const idx = ci + 1;
-        // クリニック全体タイムライン
-        const clinicEl = document.getElementById('clinic-tl-' + idx);
-        if (clinicEl && clinic.details) {
-            clinicEl.innerHTML = buildClinicTimelineHTML(clinic.details);
+    const minBlocks = {{ min_blocks | default(4) }};
+    let currentFilter = 'all';
+
+    // 初期タイムライン描画
+    renderTimelines(clinicData, 'all');
+
+    // フィルタボタンのクリックイベント
+    const filterEl = document.getElementById('categoryFilter');
+    if (filterEl) {
+        filterEl.addEventListener('click', function(e) {
+            const btn = e.target.closest('.category-filter-btn');
+            if (!btn) return;
+
+            this.querySelectorAll('.category-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            currentFilter = btn.dataset.filter;
+            applyFilter(currentFilter);
+        });
+    }
+
+    function renderTimelines(data, filter) {
+        data.forEach(function(clinic, ci) {
+            const el = document.getElementById('clinic-tl-' + (ci + 1));
+            if (el && clinic.details) {
+                const details = (filter === 'all')
+                    ? clinic.details
+                    : clinic.details.filter(function(d) { return d.category === filter; });
+                el.innerHTML = details.length > 0 ? buildClinicTimelineHTML(details) : '';
+            }
+        });
+    }
+
+    function applyFilter(filter) {
+        const cards = document.querySelectorAll('.clinic-card');
+        let clinicsWithAvailability = 0;
+
+        cards.forEach(function(card, ci) {
+            const clinic = clinicData[ci];
+            if (!clinic) return;
+
+            // スタッフ詳細のshow/hide
+            const staffItems = card.querySelectorAll('.staff-detail-item');
+            let filteredBlocks = 0;
+            let visibleCount = 0;
+
+            (clinic.details || []).forEach(function(detail, di) {
+                var item = staffItems[di];
+                if (!item) return;
+                var match = (filter === 'all') || (detail.category === filter);
+                item.style.display = match ? '' : 'none';
+                if (match) {
+                    filteredBlocks += detail.blocks;
+                    visibleCount++;
+                }
+            });
+
+            // 空き枠数を更新
+            var blockEl = card.querySelector('.clinic-body > p');
+            if (blockEl) {
+                blockEl.innerHTML = '<strong>30\u5206\u7a7a\u304d\u67a0\u6570:</strong> ' + filteredBlocks;
+            }
+
+            // 該当なしのカードを非表示
+            var isAvailable = filteredBlocks >= minBlocks;
+            if (filter !== 'all' && visibleCount === 0) {
+                card.style.display = 'none';
+            } else {
+                card.style.display = '';
+                // ステータスバッジを更新
+                card.className = 'clinic-card ' + (isAvailable ? 'has-availability' : 'no-availability');
+                var badge = card.querySelector('.status-badge');
+                if (badge) {
+                    badge.className = 'status-badge ' + (isAvailable ? 'ok' : 'ng');
+                    badge.textContent = isAvailable ? 'OK' : 'NG';
+                }
+            }
+
+            if (isAvailable && card.style.display !== 'none') {
+                clinicsWithAvailability++;
+            }
+        });
+
+        // サマリー統計を更新
+        var statValues = document.querySelectorAll('.stat-value');
+        if (statValues.length >= 2) {
+            statValues[1].textContent = clinicsWithAvailability;
         }
-    });
+
+        // タイムラインを再描画
+        renderTimelines(clinicData, filter);
+    }
 })();
 
 document.getElementById('runCheckBtn').addEventListener('click', async function() {

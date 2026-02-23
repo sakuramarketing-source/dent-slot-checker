@@ -48,6 +48,37 @@ def _load_clinics_settings():
     return config.get('settings', {})
 
 
+def _apply_category_classification(data):
+    """スタッフに職種分類(doctor/hygienist)を付与"""
+    staff_rules = _load_staff_rules()
+    staff_by_clinic = staff_rules.get('staff_by_clinic', {})
+
+    for result in data.get('results', []):
+        clinic_name = result.get('clinic', '')
+        clinic_config = staff_by_clinic.get(clinic_name, {})
+        doctors = set(clinic_config.get('doctors', []))
+        hygienists = set(clinic_config.get('hygienists', []))
+
+        dr_blocks = hyg_blocks = other_blocks = 0
+        for detail in result.get('details', []):
+            staff_name = detail.get('doctor', '')
+            blocks = detail.get('blocks', 0)
+            if staff_name in doctors:
+                detail['category'] = 'doctor'
+                dr_blocks += blocks
+            elif staff_name in hygienists:
+                detail['category'] = 'hygienist'
+                hyg_blocks += blocks
+            else:
+                detail['category'] = 'unknown'
+                other_blocks += blocks
+
+        result['category_summary'] = {
+            'doctor': dr_blocks, 'hygienist': hyg_blocks, 'other': other_blocks
+        }
+    return data
+
+
 def _apply_web_booking_filter(data):
     """web_bookingフィルタを適用"""
     staff_rules = _load_staff_rules()
@@ -90,9 +121,12 @@ def _apply_web_booking_filter(data):
 def index():
     """ダッシュボード"""
     result = get_latest_result()
+    settings = _load_clinics_settings()
+    min_blocks = settings.get('minimum_blocks_required', 4)
     if result:
+        result = _apply_category_classification(result)
         result = _apply_web_booking_filter(result)
-    return render_template('index.html', result=result)
+    return render_template('index.html', result=result, min_blocks=min_blocks)
 
 
 @bp.route('/staff')

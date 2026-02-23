@@ -11,6 +11,11 @@
     <select id="dateSelect">
         <option value="">読み込み中...</option>
     </select>
+    <span class="category-filter" id="categoryFilter">
+        <button class="category-filter-btn active" data-filter="all">全て</button>
+        <button class="category-filter-btn" data-filter="doctor">Dr</button>
+        <button class="category-filter-btn" data-filter="hygienist">DH</button>
+    </span>
 </div>
 
 <div id="resultsContainer" class="results-detail-container">
@@ -21,6 +26,23 @@
 
 {% block scripts %}
 <script>
+let currentResultData = null;
+let currentCategoryFilter = 'all';
+
+// フィルタボタンのクリックイベント
+document.getElementById('categoryFilter').addEventListener('click', function(e) {
+    const btn = e.target.closest('.category-filter-btn');
+    if (!btn) return;
+
+    this.querySelectorAll('.category-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentCategoryFilter = btn.dataset.filter;
+
+    if (currentResultData) {
+        renderResult(currentResultData, currentCategoryFilter);
+    }
+});
+
 async function loadResultList() {
     const select = document.getElementById('dateSelect');
 
@@ -38,7 +60,6 @@ async function loadResultList() {
             `<option value="${item.check_date}">${item.check_date}</option>`
         ).join('');
 
-        // 最初の日付のデータを読み込む
         loadResultByDate(data[0].check_date);
 
         select.addEventListener('change', function() {
@@ -56,7 +77,6 @@ async function loadResultByDate(date) {
     container.innerHTML = '<div class="loading">読み込み中...</div>';
 
     try {
-        // 職種別集計付きのAPIを使用
         const response = await fetch('/api/results/with-categories');
         const data = await response.json();
 
@@ -65,77 +85,105 @@ async function loadResultByDate(date) {
             return;
         }
 
-        let html = `
-            <div class="result-header">
-                <p><strong>チェック対象日:</strong> ${data.check_date}</p>
-                <p><strong>チェック日時:</strong> ${data.checked_at}</p>
-            </div>
-
-            <div class="summary-stats">
-                <div class="stat-box">
-                    <span class="stat-value">${data.summary.total_clinics}</span>
-                    <span class="stat-label">対象分院数</span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-value">${data.summary.clinics_with_availability}</span>
-                    <span class="stat-label">不足分院</span>
-                </div>
-            </div>
-            <p style="font-size:0.8rem;color:#e67e22;margin-top:0.5rem">* WEB予約受付スタッフのみで集計（<a href="/staff">スタッフ管理</a>で設定）</p>
-
-            <div class="results-grid">
-        `;
-
-        for (const result of data.results) {
-            const catSummary = result.category_summary || {};
-
-            html += `
-                <div class="clinic-card ${result.result ? 'has-availability' : 'no-availability'}">
-                    <div class="clinic-header">
-                        <h3>${result.clinic}</h3>
-                        <span class="status-badge ${result.result ? 'ok' : 'ng'}">
-                            ${result.result ? '不足' : '充足'}
-                        </span>
-                    </div>
-                    <div class="clinic-body">
-                        <p><strong>30分空き枠数:</strong> ${result.total_30min_blocks}</p>
-                        ${(catSummary.doctor || catSummary.hygienist) ? `
-                            <div class="category-summary">
-                                ${catSummary.doctor ? `<span class="cat-stat doctor">Dr: ${catSummary.doctor}</span>` : ''}
-                                ${catSummary.hygienist ? `<span class="cat-stat hygienist">DH: ${catSummary.hygienist}</span>` : ''}
-                                ${catSummary.other ? `<span class="cat-stat other">他: ${catSummary.other}</span>` : ''}
-                            </div>
-                        ` : ''}
-                        ${result.details && result.details.length > 0 ? `
-                            ${buildClinicTimelineHTML(result.details)}
-                            <details>
-                                <summary>詳細を見る</summary>
-                                <div class="detail-list">
-                                    ${result.details.map(detail => `
-                                        <div class="staff-detail-item">
-                                            <div class="staff-detail-header">
-                                                <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
-                                                <strong>${detail.doctor}</strong>
-                                                <span style="color:#7f8c8d">${detail.blocks}枠</span>
-                                                ${detail.memo ? `<span class="staff-memo">(${detail.memo})</span>` : ''}
-                                            </div>
-                                            ${buildTimeTagsHTML(detail.times, detail.category || 'unknown')}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </details>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-        }
-
-        html += '</div>';
-        container.innerHTML = html;
+        currentResultData = data;
+        renderResult(data, currentCategoryFilter);
 
     } catch (error) {
         container.innerHTML = `<div class="error">エラー: ${error.message}</div>`;
     }
+}
+
+function renderResult(data, filter) {
+    const container = document.getElementById('resultsContainer');
+    const minBlocks = 4;
+
+    let clinicsWithAvailability = 0;
+    let visibleClinics = 0;
+
+    let cardsHtml = '';
+
+    for (const result of data.results) {
+        const filteredDetails = (filter === 'all')
+            ? result.details
+            : (result.details || []).filter(function(d) { return d.category === filter; });
+
+        if (filter !== 'all' && filteredDetails.length === 0) continue;
+
+        visibleClinics++;
+        const filteredBlocks = filteredDetails.reduce(function(sum, d) { return sum + d.blocks; }, 0);
+        const isAvailable = filteredBlocks >= minBlocks;
+        if (isAvailable) clinicsWithAvailability++;
+
+        // カテゴリ集計
+        const catSummary = {};
+        filteredDetails.forEach(function(d) {
+            var cat = d.category || 'unknown';
+            catSummary[cat] = (catSummary[cat] || 0) + d.blocks;
+        });
+
+        cardsHtml += `
+            <div class="clinic-card ${isAvailable ? 'has-availability' : 'no-availability'}">
+                <div class="clinic-header">
+                    <h3>${result.clinic}</h3>
+                    <span class="status-badge ${isAvailable ? 'ok' : 'ng'}">
+                        ${isAvailable ? '不足' : '充足'}
+                    </span>
+                </div>
+                <div class="clinic-body">
+                    <p><strong>30分空き枠数:</strong> ${filteredBlocks}</p>
+                    ${(catSummary.doctor || catSummary.hygienist) ? `
+                        <div class="category-summary">
+                            ${catSummary.doctor ? '<span class="cat-stat doctor">Dr: ' + catSummary.doctor + '</span>' : ''}
+                            ${catSummary.hygienist ? '<span class="cat-stat hygienist">DH: ' + catSummary.hygienist + '</span>' : ''}
+                            ${catSummary.unknown ? '<span class="cat-stat other">他: ' + catSummary.unknown + '</span>' : ''}
+                        </div>
+                    ` : ''}
+                    ${filteredDetails.length > 0 ? `
+                        ${buildClinicTimelineHTML(filteredDetails)}
+                        <details>
+                            <summary>詳細を見る</summary>
+                            <div class="detail-list">
+                                ${filteredDetails.map(function(detail) { return `
+                                    <div class="staff-detail-item">
+                                        <div class="staff-detail-header">
+                                            <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
+                                            <strong>${detail.doctor}</strong>
+                                            <span style="color:#7f8c8d">${detail.blocks}枠</span>
+                                            ${detail.memo ? '<span class="staff-memo">(' + detail.memo + ')</span>' : ''}
+                                        </div>
+                                        ${buildTimeTagsHTML(detail.times, detail.category || 'unknown')}
+                                    </div>
+                                `; }).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    let html = `
+        <div class="result-header">
+            <p><strong>チェック対象日:</strong> ${data.check_date}</p>
+            <p><strong>チェック日時:</strong> ${data.checked_at}</p>
+        </div>
+        <div class="summary-stats">
+            <div class="stat-box">
+                <span class="stat-value">${filter === 'all' ? data.summary.total_clinics : visibleClinics}</span>
+                <span class="stat-label">対象分院数</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value">${clinicsWithAvailability}</span>
+                <span class="stat-label">不足分院</span>
+            </div>
+        </div>
+        <p style="font-size:0.8rem;color:#e67e22;margin-top:0.5rem">* WEB予約受付スタッフのみで集計（<a href="/staff">スタッフ管理</a>で設定）</p>
+        <div class="results-grid">
+            ${cardsHtml}
+        </div>
+    `;
+
+    container.innerHTML = html;
 }
 
 function getCategoryLabel(category) {
@@ -146,7 +194,6 @@ function getCategoryLabel(category) {
     }
 }
 
-// ページ読み込み時に結果リストを取得
 loadResultList();
 </script>
 {% endblock %}

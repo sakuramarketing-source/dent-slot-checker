@@ -744,6 +744,49 @@ h1 {
     font-style: italic;
 }
 
+/* Dr/DH フィルタトグル */
+.category-filter {
+    display: inline-flex;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-left: 1rem;
+    vertical-align: middle;
+}
+
+.category-filter-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    background: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #7f8c8d;
+    transition: all 0.2s;
+    border-right: 1px solid #bdc3c7;
+}
+
+.category-filter-btn:last-child {
+    border-right: none;
+}
+
+.category-filter-btn:hover {
+    background: #f8f9fa;
+}
+
+.category-filter-btn.active {
+    background: #2c3e50;
+    color: white;
+}
+
+.category-filter-btn.active[data-filter="doctor"] {
+    background: #27ae60;
+}
+
+.category-filter-btn.active[data-filter="hygienist"] {
+    background: #9b59b6;
+}
+
 /* タイムライン */
 .timeline-container {
     margin-top: 0.5rem;
