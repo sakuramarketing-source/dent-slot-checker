@@ -17,6 +17,7 @@ def create_app():
     # 設定
     app.config['SECRET_KEY'] = 'dent-slot-checker-secret-key'
     app.config['JSON_AS_ASCII'] = False  # 日本語をそのまま表示
+    app.json.sort_keys = False  # 辞書の挿入順序を保持
 
     # プロジェクトルートパスを設定
     app.config['PROJECT_ROOT'] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

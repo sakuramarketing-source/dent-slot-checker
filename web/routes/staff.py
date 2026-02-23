@@ -8,6 +8,27 @@ from flask import Blueprint, jsonify, request, current_app
 
 bp = Blueprint('staff', __name__)
 
+# コーポレートサイト沿革の開院順
+CLINIC_ORDER = [
+    'さくら歯科',
+    'たんぽぽ歯科',
+    'ありす歯科',
+    '春日井きらり歯科',
+    '松戸ありす歯科',
+    '池下さくら歯科',
+    '日進赤池たんぽぽ歯科',
+    '春日井アップル歯科',
+    'さくら医院',
+    '金沢さくら医院',
+    '流山ハピネス歯科',
+    'イーアス春日井歯科',
+    '名駅さくら医院・歯科・皮膚科',
+    'きらり大森歯科',
+    'クローバー歯科',
+    '流山ありす歯科・矯正歯科',
+    '町屋さくら歯科・矯正歯科',
+]
+
 
 def load_staff_rules():
     """staff_rules.yamlを読み込む"""
@@ -88,13 +109,17 @@ def get_all_staff():
     clinics_config = load_clinics_config()
     exclude_patterns = clinics_config.get('settings', {}).get('exclude_patterns', ['訪問'])
 
-    # マージした結果を作成
+    # マージした結果を作成（開院順）
     result = {}
 
-    # 設定ファイルに登録済みのスタッフも追加
+    # CLINIC_ORDER順 + 未知のクリニックは末尾
     all_clinic_names = set(staff_from_results.keys()) | set(staff_by_clinic.keys())
+    ordered_names = list(CLINIC_ORDER)
+    for name in sorted(all_clinic_names):
+        if name not in ordered_names:
+            ordered_names.append(name)
 
-    for clinic_name in all_clinic_names:
+    for clinic_name in ordered_names:
         clinic_config = staff_by_clinic.get(clinic_name, {})
         staff_from_result = staff_from_results.get(clinic_name, [])
 

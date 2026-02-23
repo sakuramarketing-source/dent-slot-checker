@@ -276,6 +276,64 @@ h1 {
     border-bottom: 2px solid #ecf0f1;
 }
 
+/* アコーディオン（スタッフ管理画面） */
+.clinic-accordion {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.clinic-accordion-header {
+    display: flex;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 8px;
+    transition: background 0.15s;
+}
+
+.clinic-accordion-header:hover {
+    background: #f8f9fa;
+}
+
+.accordion-arrow {
+    display: inline-block;
+    transition: transform 0.2s;
+    margin-right: 0.6rem;
+    font-size: 0.7rem;
+    color: #7f8c8d;
+}
+
+.accordion-arrow.open {
+    transform: rotate(90deg);
+}
+
+.clinic-accordion-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: #2c3e50;
+    flex: 1;
+}
+
+.staff-count {
+    color: #7f8c8d;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.clinic-accordion-body {
+    padding: 0 1rem 1rem;
+}
+
+.no-staff-message {
+    color: #95a5a6;
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+}
+
 .staff-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));

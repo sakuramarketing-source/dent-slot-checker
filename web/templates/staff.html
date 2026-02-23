@@ -23,6 +23,18 @@
 
 {% block scripts %}
 <script>
+function toggleAccordion(header) {
+    const body = header.nextElementSibling;
+    const arrow = header.querySelector('.accordion-arrow');
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        arrow.classList.add('open');
+    } else {
+        body.style.display = 'none';
+        arrow.classList.remove('open');
+    }
+}
+
 async function loadStaff() {
     const container = document.getElementById('staffContainer');
 
@@ -37,53 +49,65 @@ async function loadStaff() {
 
         let html = '';
         for (const [clinicName, clinicData] of Object.entries(data)) {
+            const staffCount = clinicData.staff.length;
+
             html += `
-                <div class="clinic-section">
-                    <h2>${clinicName}</h2>
-                    <div class="staff-list">
+                <div class="clinic-accordion">
+                    <div class="clinic-accordion-header" onclick="toggleAccordion(this)">
+                        <span class="accordion-arrow">&#9654;</span>
+                        <h2>${clinicName}</h2>
+                        <span class="staff-count">${staffCount > 0 ? staffCount + '名' : '未登録'}</span>
+                    </div>
+                    <div class="clinic-accordion-body" style="display:none;">
             `;
 
-            for (const staff of clinicData.staff) {
-                const isDisabled = !staff.enabled;
-                const isAutoDisabled = staff.auto_disabled;
-                const tagsHtml = (staff.tags || []).map(tag =>
-                    `<span class="staff-tag">${tag}<button class="tag-remove" onclick="removeTag(this, '${clinicName}', '${staff.name}', '${tag}')">&times;</button></span>`
-                ).join('');
+            if (staffCount === 0) {
+                html += '<p class="no-staff-message">スタッフ未登録（スタッフ同期またはチェック実行で追加されます）</p>';
+            } else {
+                html += '<div class="staff-list">';
+                for (const staff of clinicData.staff) {
+                    const isDisabled = !staff.enabled;
+                    const isAutoDisabled = staff.auto_disabled;
+                    const tagsHtml = (staff.tags || []).map(tag =>
+                        `<span class="staff-tag">${tag}<button class="tag-remove" onclick="removeTag(this, '${clinicName}', '${staff.name}', '${tag}')">&times;</button></span>`
+                    ).join('');
 
-                html += `
-                    <div class="staff-item ${isDisabled ? 'disabled' : ''}" data-clinic="${clinicName}" data-name="${staff.name}">
-                        <div class="staff-row-main">
-                            <label class="toggle-switch ${isAutoDisabled ? 'auto-disabled' : ''}">
-                                <input type="checkbox" ${staff.enabled ? 'checked' : ''} ${isAutoDisabled ? 'disabled' : ''} onchange="handleToggle(this)">
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <label class="web-booking-toggle ${isDisabled ? 'disabled-toggle' : ''}" title="WEB予約受付">
-                                <input type="checkbox" ${staff.web_booking ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onchange="handleWebBookingToggle(this)">
-                                <span class="web-booking-label ${staff.web_booking ? 'active' : ''}">WEB</span>
-                            </label>
-                            <span class="staff-name">${staff.name}</span>
-                            ${isAutoDisabled ? '<span class="auto-tag">自動除外</span>' : ''}
-                            <div class="category-buttons">
-                                <button class="cat-btn ${staff.category === 'doctor' ? 'active' : ''}" data-category="doctor" ${isDisabled ? 'disabled' : ''}>Dr</button>
-                                <button class="cat-btn ${staff.category === 'hygienist' ? 'active' : ''}" data-category="hygienist" ${isDisabled ? 'disabled' : ''}>DH</button>
-                                <button class="cat-btn ${staff.category === 'unknown' ? 'active' : ''}" data-category="unknown" ${isDisabled ? 'disabled' : ''}>--</button>
+                    html += `
+                        <div class="staff-item ${isDisabled ? 'disabled' : ''}" data-clinic="${clinicName}" data-name="${staff.name}">
+                            <div class="staff-row-main">
+                                <label class="toggle-switch ${isAutoDisabled ? 'auto-disabled' : ''}">
+                                    <input type="checkbox" ${staff.enabled ? 'checked' : ''} ${isAutoDisabled ? 'disabled' : ''} onchange="handleToggle(this)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <label class="web-booking-toggle ${isDisabled ? 'disabled-toggle' : ''}" title="WEB予約受付">
+                                    <input type="checkbox" ${staff.web_booking ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onchange="handleWebBookingToggle(this)">
+                                    <span class="web-booking-label ${staff.web_booking ? 'active' : ''}">WEB</span>
+                                </label>
+                                <span class="staff-name">${staff.name}</span>
+                                ${isAutoDisabled ? '<span class="auto-tag">自動除外</span>' : ''}
+                                <div class="category-buttons">
+                                    <button class="cat-btn ${staff.category === 'doctor' ? 'active' : ''}" data-category="doctor" ${isDisabled ? 'disabled' : ''}>Dr</button>
+                                    <button class="cat-btn ${staff.category === 'hygienist' ? 'active' : ''}" data-category="hygienist" ${isDisabled ? 'disabled' : ''}>DH</button>
+                                    <button class="cat-btn ${staff.category === 'unknown' ? 'active' : ''}" data-category="unknown" ${isDisabled ? 'disabled' : ''}>--</button>
+                                </div>
+                                <div class="memo-input">
+                                    <input type="text" class="memo-field" placeholder="メモ" value="${staff.memo || ''}"
+                                        onchange="updateMemo(this, '${clinicName}', '${staff.name}')" ${isDisabled ? 'disabled' : ''}>
+                                </div>
                             </div>
-                            <div class="memo-input">
-                                <input type="text" class="memo-field" placeholder="メモ" value="${staff.memo || ''}"
-                                    onchange="updateMemo(this, '${clinicName}', '${staff.name}')" ${isDisabled ? 'disabled' : ''}>
+                            <div class="staff-row-tags">
+                                <div class="tags-container">
+                                    ${tagsHtml}
+                                    <button class="tag-add-btn" onclick="showTagInput(this)" ${isDisabled ? 'disabled' : ''}>+ タグ</button>
+                                    <input type="text" class="tag-input" placeholder="タグを入力" style="display:none;"
+                                        onkeydown="handleTagInput(event, this, '${clinicName}', '${staff.name}')"
+                                        onblur="hideTagInput(this)">
+                                </div>
                             </div>
                         </div>
-                        <div class="staff-row-tags">
-                            <div class="tags-container">
-                                ${tagsHtml}
-                                <button class="tag-add-btn" onclick="showTagInput(this)" ${isDisabled ? 'disabled' : ''}>+ タグ</button>
-                                <input type="text" class="tag-input" placeholder="タグを入力" style="display:none;"
-                                    onkeydown="handleTagInput(event, this, '${clinicName}', '${staff.name}')"
-                                    onblur="hideTagInput(this)">
-                            </div>
-                        </div>
-                    </div>
-                `;
+                    `;
+                }
+                html += '</div>';
             }
 
             html += `
