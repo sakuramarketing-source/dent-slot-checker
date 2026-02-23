@@ -46,7 +46,8 @@ def setup_logging(log_dir: Path = None):
 def analyze_results(
     scrape_results: Dict[str, Dict[str, List[int]]],
     slot_settings: Dict[str, int],
-    system_type: str = 'dent-sys'
+    system_type: str = 'dent-sys',
+    staff_by_clinic: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     スクレイピング結果を分析してチェック結果を生成
@@ -55,6 +56,7 @@ def analyze_results(
         scrape_results: {分院名: {先生名/チェア名: [スロット時間のリスト]}}
         slot_settings: スロット設定
         system_type: システムタイプ ('dent-sys' or 'stransa')
+        staff_by_clinic: 医院別スタッフ設定（職種分類・閾値）
 
     Returns:
         分析結果
@@ -66,6 +68,7 @@ def analyze_results(
     clinics_with_availability = 0
 
     minimum_blocks = slot_settings['minimum_blocks_required']
+    staff_by_clinic = staff_by_clinic or {}
 
     # システムタイプによってスロット設定を変更
     if system_type == 'stransa':
@@ -80,12 +83,29 @@ def analyze_results(
     for clinic_name, doctor_slots in scrape_results.items():
         doctor_results = []
 
+        # 医院別・職種別の閾値を取得
+        clinic_config = staff_by_clinic.get(clinic_name, {})
+        doctors_set = set(clinic_config.get('doctors', []))
+        hygienists_set = set(clinic_config.get('hygienists', []))
+        thresholds = clinic_config.get('slot_threshold', {})
+        dr_threshold = thresholds.get('doctor', 30)
+        dh_threshold = thresholds.get('hygienist', 30)
+
         for doctor_name, slot_times in doctor_slots.items():
+            # スタッフの職種に応じた閾値を決定
+            if doctor_name in doctors_set:
+                threshold = dr_threshold
+            elif doctor_name in hygienists_set:
+                threshold = dh_threshold
+            else:
+                threshold = 30  # 未分類はデフォルト30分
+
             analysis = analyze_doctor_slots(
                 doctor_name,
                 slot_times,
                 consecutive_required,
-                interval
+                interval,
+                threshold_minutes=threshold
             )
             if analysis['blocks'] > 0:
                 doctor_results.append(analysis)
@@ -142,6 +162,16 @@ async def main_async(
     exclude_patterns = get_exclude_patterns(config)
     slot_settings = get_slot_settings(config)
 
+    # スタッフ設定（職種分類・閾値）読み込み
+    staff_by_clinic = config.get('staff_categories', {}) or {}
+    # staff_rules.yaml の staff_by_clinic を直接読み込む
+    config_path_sr = Path(__file__).parent.parent / 'config' / 'staff_rules.yaml'
+    if config_path_sr.exists():
+        import yaml
+        with open(config_path_sr, 'r', encoding='utf-8') as f:
+            sr_data = yaml.safe_load(f) or {}
+        staff_by_clinic = sr_data.get('staff_by_clinic', {})
+
     # システム別に分院を分類
     dent_sys_clinics = [
         c for c in config.get('dent_sys_clinics', [])
@@ -182,7 +212,7 @@ async def main_async(
         )
 
         # 結果分析
-        dent_analysis = analyze_results(dent_scrape_results, slot_settings, 'dent-sys')
+        dent_analysis = analyze_results(dent_scrape_results, slot_settings, 'dent-sys', staff_by_clinic)
         all_results.extend(dent_analysis['results'])
         total_clinics += dent_analysis['summary']['total_clinics']
         clinics_with_availability += dent_analysis['summary']['clinics_with_availability']
@@ -196,7 +226,7 @@ async def main_async(
         )
 
         # 結果分析
-        stransa_analysis = analyze_results(stransa_scrape_results, slot_settings, 'stransa')
+        stransa_analysis = analyze_results(stransa_scrape_results, slot_settings, 'stransa', staff_by_clinic)
         all_results.extend(stransa_analysis['results'])
         total_clinics += stransa_analysis['summary']['total_clinics']
         clinics_with_availability += stransa_analysis['summary']['clinics_with_availability']

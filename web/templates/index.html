@@ -47,7 +47,14 @@
             </span>
         </div>
         <div class="clinic-body">
-            <p><strong>30分空き枠数:</strong> {{ clinic_result.total_30min_blocks }}</p>
+            {% set th = clinic_result.get('slot_threshold', {}) %}
+            {% set dr_th = th.get('doctor', 30) %}
+            {% set dh_th = th.get('hygienist', 30) %}
+            {% if dr_th == dh_th %}
+            <p><strong>{{ dr_th }}分空き枠数:</strong> {{ clinic_result.total_30min_blocks }}</p>
+            {% else %}
+            <p><strong>空き枠数:</strong> {{ clinic_result.total_30min_blocks }} <span style="font-size:0.75rem;color:#7f8c8d">(Dr:{{ dr_th }}分/DH:{{ dh_th }}分)</span></p>
+            {% endif %}
             {% if clinic_result.details %}
             {% set clinic_idx = loop.index %}
             <div class="clinic-timeline" id="clinic-tl-{{ clinic_idx }}"></div>
@@ -59,7 +66,7 @@
                         <div class="staff-detail-header">
                             <span class="staff-category-badge {{ detail.category or 'unknown' }}">{{ 'Dr' if detail.category == 'doctor' else ('DH' if detail.category == 'hygienist' else '--') }}</span>
                             <strong>{{ detail.doctor }}</strong>
-                            <span style="color:#7f8c8d">{{ detail.blocks }}枠</span>
+                            <span style="color:#7f8c8d">{{ detail.blocks }}枠{% if detail.get('threshold_minutes', 30) != 30 %}({{ detail.threshold_minutes }}分){% endif %}</span>
                         </div>
                         <div class="time-tags">
                             {% for t in detail.times %}
@@ -147,7 +154,20 @@
             // 空き枠数を更新
             var blockEl = card.querySelector('.clinic-body > p');
             if (blockEl) {
-                blockEl.innerHTML = '<strong>30\u5206\u7a7a\u304d\u67a0\u6570:</strong> ' + filteredBlocks;
+                var th = clinic.slot_threshold || {};
+                var drTh = th.doctor || 30;
+                var dhTh = th.hygienist || 30;
+                var label;
+                if (filter === 'doctor') {
+                    label = drTh + '\u5206\u7a7a\u304d\u67a0\u6570';
+                } else if (filter === 'hygienist') {
+                    label = dhTh + '\u5206\u7a7a\u304d\u67a0\u6570';
+                } else if (drTh === dhTh) {
+                    label = drTh + '\u5206\u7a7a\u304d\u67a0\u6570';
+                } else {
+                    label = '\u7a7a\u304d\u67a0\u6570';
+                }
+                blockEl.innerHTML = '<strong>' + label + ':</strong> ' + filteredBlocks;
             }
 
             // 該当なしのカードを非表示

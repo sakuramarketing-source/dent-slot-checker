@@ -130,7 +130,7 @@ function renderResult(data, filter) {
                     </span>
                 </div>
                 <div class="clinic-body">
-                    <p><strong>30分空き枠数:</strong> ${filteredBlocks}</p>
+                    <p><strong>${getThresholdLabel(result, filter)}:</strong> ${filteredBlocks}</p>
                     ${(catSummary.doctor || catSummary.hygienist) ? `
                         <div class="category-summary">
                             ${catSummary.doctor ? '<span class="cat-stat doctor">Dr: ' + catSummary.doctor + '</span>' : ''}
@@ -148,7 +148,7 @@ function renderResult(data, filter) {
                                         <div class="staff-detail-header">
                                             <span class="staff-category-badge ${detail.category || 'unknown'}">${getCategoryLabel(detail.category)}</span>
                                             <strong>${detail.doctor}</strong>
-                                            <span style="color:#7f8c8d">${detail.blocks}枠</span>
+                                            <span style="color:#7f8c8d">${detail.blocks}枠${detail.threshold_minutes && detail.threshold_minutes !== 30 ? '(' + detail.threshold_minutes + '分)' : ''}</span>
                                             ${detail.memo ? '<span class="staff-memo">(' + detail.memo + ')</span>' : ''}
                                         </div>
                                         ${buildTimeTagsHTML(detail.times, detail.category || 'unknown')}
@@ -184,6 +184,16 @@ function renderResult(data, filter) {
     `;
 
     container.innerHTML = html;
+}
+
+function getThresholdLabel(result, filter) {
+    var th = result.slot_threshold || {};
+    var drTh = th.doctor || 30;
+    var dhTh = th.hygienist || 30;
+    if (filter === 'doctor') return drTh + '分空き枠数';
+    if (filter === 'hygienist') return dhTh + '分空き枠数';
+    if (drTh === dhTh) return drTh + '分空き枠数';
+    return '空き枠数';
 }
 
 function getCategoryLabel(category) {

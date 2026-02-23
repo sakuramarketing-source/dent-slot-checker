@@ -328,6 +328,65 @@ h1 {
     padding: 0 1rem 1rem;
 }
 
+/* 閾値設定 */
+.threshold-settings {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0 0.75rem;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 0.75rem;
+}
+
+.threshold-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+}
+
+.threshold-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.threshold-cat {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+}
+
+.threshold-cat.doctor {
+    color: #27ae60;
+    background: #e8f5e9;
+}
+
+.threshold-cat.hygienist {
+    color: #9b59b6;
+    background: #f3e5f5;
+}
+
+.threshold-input {
+    width: 55px;
+    padding: 0.2rem 0.3rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    text-align: center;
+    transition: border-color 0.3s;
+}
+
+.threshold-input:focus {
+    outline: none;
+    border-color: #635BFF;
+}
+
+.threshold-unit {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+}
+
 .no-staff-message {
     color: #95a5a6;
     font-size: 0.9rem;

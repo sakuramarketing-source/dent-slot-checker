@@ -142,10 +142,15 @@ def get_all_staff():
         hygienists = clinic_config.get('hygienists', [])
         disabled = clinic_config.get('disabled', [])
         web_booking = set(clinic_config.get('web_booking', []))
+        thresholds = clinic_config.get('slot_threshold', {})
 
         result[clinic_name] = {
             'staff': [],
-            'has_web_booking_filter': len(web_booking) > 0
+            'has_web_booking_filter': len(web_booking) > 0,
+            'slot_threshold': {
+                'doctor': thresholds.get('doctor', 30),
+                'hygienist': thresholds.get('hygienist', 30),
+            }
         }
 
         for staff_name in sorted(all_staff_names):
@@ -378,6 +383,45 @@ def update_staff_tags(clinic_name):
     save_staff_rules(staff_rules)
 
     return jsonify({'success': True, 'clinic': clinic_name, 'name': staff_name, 'tags': tags})
+
+
+@bp.route('/<clinic_name>/threshold', methods=['POST'])
+def update_threshold(clinic_name):
+    """医院の空き枠判定閾値を更新"""
+    data = request.get_json()
+    doctor_threshold = data.get('doctor')
+    hygienist_threshold = data.get('hygienist')
+
+    if doctor_threshold is None and hygienist_threshold is None:
+        return jsonify({'error': 'doctor or hygienist threshold is required'}), 400
+
+    # 設定を読み込み
+    staff_rules = load_staff_rules()
+
+    if 'staff_by_clinic' not in staff_rules:
+        staff_rules['staff_by_clinic'] = {}
+
+    if clinic_name not in staff_rules['staff_by_clinic']:
+        staff_rules['staff_by_clinic'][clinic_name] = {}
+
+    clinic_config = staff_rules['staff_by_clinic'][clinic_name]
+
+    if 'slot_threshold' not in clinic_config:
+        clinic_config['slot_threshold'] = {}
+
+    if doctor_threshold is not None:
+        clinic_config['slot_threshold']['doctor'] = int(doctor_threshold)
+    if hygienist_threshold is not None:
+        clinic_config['slot_threshold']['hygienist'] = int(hygienist_threshold)
+
+    # 保存
+    save_staff_rules(staff_rules)
+
+    return jsonify({
+        'success': True,
+        'clinic': clinic_name,
+        'slot_threshold': clinic_config['slot_threshold']
+    })
 
 
 @bp.route('/sync', methods=['POST'])

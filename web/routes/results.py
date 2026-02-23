@@ -193,6 +193,9 @@ def get_result_with_categories():
             doctors = set(clinic_config.get('doctors', []))
             hygienists = set(clinic_config.get('hygienists', []))
             memos = clinic_config.get('memos', {})
+            thresholds = clinic_config.get('slot_threshold', {})
+            dr_threshold = thresholds.get('doctor', 30)
+            dh_threshold = thresholds.get('hygienist', 30)
 
             doctor_blocks = 0
             hygienist_blocks = 0
@@ -205,12 +208,15 @@ def get_result_with_categories():
                 # 職種分類
                 if staff_name in doctors:
                     detail['category'] = 'doctor'
+                    detail.setdefault('threshold_minutes', dr_threshold)
                     doctor_blocks += blocks
                 elif staff_name in hygienists:
                     detail['category'] = 'hygienist'
+                    detail.setdefault('threshold_minutes', dh_threshold)
                     hygienist_blocks += blocks
                 else:
                     detail['category'] = 'unknown'
+                    detail.setdefault('threshold_minutes', 30)
                     other_blocks += blocks
 
                 # メモを追加
@@ -221,6 +227,10 @@ def get_result_with_categories():
                 'doctor': doctor_blocks,
                 'hygienist': hygienist_blocks,
                 'other': other_blocks
+            }
+            result['slot_threshold'] = {
+                'doctor': dr_threshold,
+                'hygienist': dh_threshold
             }
 
         # WEB予約受付フィルタを適用（職種分類後に実行）

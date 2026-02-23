@@ -49,7 +49,7 @@ def _load_clinics_settings():
 
 
 def _apply_category_classification(data):
-    """スタッフに職種分類(doctor/hygienist)を付与"""
+    """スタッフに職種分類(doctor/hygienist)と閾値情報を付与"""
     staff_rules = _load_staff_rules()
     staff_by_clinic = staff_rules.get('staff_by_clinic', {})
 
@@ -58,6 +58,9 @@ def _apply_category_classification(data):
         clinic_config = staff_by_clinic.get(clinic_name, {})
         doctors = set(clinic_config.get('doctors', []))
         hygienists = set(clinic_config.get('hygienists', []))
+        thresholds = clinic_config.get('slot_threshold', {})
+        dr_threshold = thresholds.get('doctor', 30)
+        dh_threshold = thresholds.get('hygienist', 30)
 
         dr_blocks = hyg_blocks = other_blocks = 0
         for detail in result.get('details', []):
@@ -65,16 +68,22 @@ def _apply_category_classification(data):
             blocks = detail.get('blocks', 0)
             if staff_name in doctors:
                 detail['category'] = 'doctor'
+                detail.setdefault('threshold_minutes', dr_threshold)
                 dr_blocks += blocks
             elif staff_name in hygienists:
                 detail['category'] = 'hygienist'
+                detail.setdefault('threshold_minutes', dh_threshold)
                 hyg_blocks += blocks
             else:
                 detail['category'] = 'unknown'
+                detail.setdefault('threshold_minutes', 30)
                 other_blocks += blocks
 
         result['category_summary'] = {
             'doctor': dr_blocks, 'hygienist': hyg_blocks, 'other': other_blocks
+        }
+        result['slot_threshold'] = {
+            'doctor': dr_threshold, 'hygienist': dh_threshold
         }
     return data
 

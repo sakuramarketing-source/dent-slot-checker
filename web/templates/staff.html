@@ -61,6 +61,26 @@ async function loadStaff() {
                     <div class="clinic-accordion-body" style="display:none;">
             `;
 
+            // 閾値設定UI
+            const threshold = clinicData.slot_threshold || {doctor: 30, hygienist: 30};
+            html += `
+                <div class="threshold-settings" data-clinic="${clinicName}">
+                    <span class="threshold-label">初診枠:</span>
+                    <span class="threshold-group">
+                        <span class="threshold-cat doctor">Dr</span>
+                        <input type="number" class="threshold-input" value="${threshold.doctor}" min="10" max="120" step="5"
+                            data-type="doctor" onchange="updateThreshold(this, '${clinicName}')">
+                        <span class="threshold-unit">分</span>
+                    </span>
+                    <span class="threshold-group">
+                        <span class="threshold-cat hygienist">DH</span>
+                        <input type="number" class="threshold-input" value="${threshold.hygienist}" min="10" max="120" step="5"
+                            data-type="hygienist" onchange="updateThreshold(this, '${clinicName}')">
+                        <span class="threshold-unit">分</span>
+                    </span>
+                </div>
+            `;
+
             if (staffCount === 0) {
                 html += '<p class="no-staff-message">スタッフ未登録（スタッフ同期またはチェック実行で追加されます）</p>';
             } else {
@@ -378,6 +398,38 @@ async function removeTag(btn, clinic, name, tagToRemove) {
             btn.closest('.staff-tag').remove();
         } else {
             alert('タグの削除に失敗しました');
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+    }
+}
+
+// 閾値更新
+async function updateThreshold(input, clinic) {
+    const type = input.dataset.type;
+    const value = parseInt(input.value);
+
+    if (isNaN(value) || value < 10 || value > 120) {
+        alert('10〜120の範囲で入力してください');
+        return;
+    }
+
+    const payload = {};
+    payload[type] = value;
+
+    try {
+        const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}/threshold`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            input.style.borderColor = '#27ae60';
+            setTimeout(() => { input.style.borderColor = ''; }, 1500);
+        } else {
+            alert('保存に失敗しました');
         }
     } catch (error) {
         alert('エラー: ' + error.message);

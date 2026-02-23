@@ -31,6 +31,14 @@ staff_by_clinic:
     - 黒濱MRC
     - 黒濱checkB
     disabled: []
+    doctors:
+    - 加藤
+    - 印南
+    - 古川
+    - 真鍋
+    hygienists:
+    - 尾関
+    - 籔下
     web_booking:
     - 加藤
     - 古川
@@ -38,10 +46,6 @@ staff_by_clinic:
     - 真鍋
     - 籔下
     - 尾関
-    - 岸
-    - 中屋
-    - 粟田
-    - 瀬古
   さくら歯科:
     all_staff:
     - 橋本Ａ
@@ -83,6 +87,22 @@ staff_by_clinic:
     - 訪問⑨
     - 長久手
     disabled: []
+    doctors:
+    - 今川Cキャンセル/変更30％以
+    - 今川キャンセル/変更10％台迄
+    - 今川Ｂキャンセル/変更20％台
+    - 堂東
+    - 東Aキャンセル/変更20％台
+    - 酒井A
+    hygienists:
+    - 三島
+    - 小池
+    - 尾関
+    - 柴田
+    - 渡辺
+    - 渡
+    - 菊谷
+    - 赤松
     web_booking:
     - 今川キャンセル/変更10％台迄
     - 今川Ｂキャンセル/変更20％台
@@ -128,6 +148,18 @@ staff_by_clinic:
     - 梶相談
     - 梶ワイヤー
     - 梶小児インビザ
+    doctors:
+    - えりな
+    - 園田
+    - 吉冨
+    - 大口
+    - 萩原
+    - 蔵
+    hygienists:
+    - 前澤
+    - 山本
+    - 奥村
+    - 長谷川
     web_booking:
     - えりな
     - 蔵
@@ -158,6 +190,21 @@ staff_by_clinic:
     - 久保
     - 藤田
     - TC/SP
+    doctors:
+    - 岩井
+    - 蕪木
+    - 高田
+    - 松澤
+    - 井上
+    - 出井
+    hygienists:
+    - 宮本
+    - 馬渕
+    - 河野
+    - 中村
+    - 上岡
+    - 久保
+    - 藤田
     web_booking:
     - 岩井
     - 蕪木
@@ -168,6 +215,8 @@ staff_by_clinic:
     - 馬渕
     - 河野
     - 久保
+    - 中村
+    - 上岡
   日進赤池たんぽぽ歯科:
     all_staff:
     - ＳＰ/急患
@@ -188,10 +237,23 @@ staff_by_clinic:
     - 阿部
     - 佐藤
     - DHヘルプ
+    doctors:
+    - ヘルプDr
+    - 柿崎A
+    - 柿崎B
+    - 永井
+    - 柿木
+    - 筒木
+    hygienists:
+    - DHヘルプ
+    - 西山
+    - 金田
+    - 久世
+    - 阿部
+    - 佐藤
     web_booking:
     - 柿崎A
     - 西山
-    - 久世
   春日井きらり歯科:
     all_staff:
     - 初診・急患
@@ -215,13 +277,30 @@ staff_by_clinic:
     - TC
     - 岡
     - 岡B
+    doctors:
+    - 鈴木
+    - 沖
+    - 園田
+    - 菊谷
+    - 鈴木B
+    - 足立
+    - 原
+    - 沖B
+    hygienists:
+    - 渡辺
+    - 中屋
+    - 伊藤め
+    - 前澤
+    - 粟田
+    - 長谷川
+    - 瀬古
+    - 森
+    - 川竹
     web_booking:
     - 鈴木
     - 沖
     - 園田
     - 菊谷
-    - 原
-    - 足立
     - 渡辺
   春日井アップル歯科:
     all_staff:
@@ -247,6 +326,21 @@ staff_by_clinic:
     - MRC
     - 岡A
     - 岡B
+    doctors:
+    - Dr大城A
+    - Dr大城B
+    - Dr柿崎A
+    - Dr柿崎B
+    - Dr奥田
+    - Dr永井
+    hygienists:
+    - DHヘルプA
+    - DH三浦
+    - DH佐藤
+    - DH木下
+    - DH成瀬
+    - DH萩
+    - DH藤井
     web_booking:
     - Dr大城A
     - Dr柿崎A
@@ -273,6 +367,18 @@ staff_by_clinic:
     - 松江
     - TC枠
     - SP/急患
+    doctors:
+    - 二木
+    - 二木３
+    - 二木2
+    - 西村2
+    - 西村
+    hygienists:
+    - 永井
+    - 田中さゆ
+    - 小谷中
+    - 松江
+    - 青山
     web_booking:
     - 永井
     - 田中さゆ
@@ -312,11 +418,29 @@ staff_by_clinic:
     - 訪問浄心②
     - 訪問浄心③
     - 訪問浄心④
-    web_booking:
+    doctors:
+    - 橋本
+    - 伊藤A
+    - 伊藤B
     - 高木A
     - 高木B
     - 佐分利
     - 勝野
+    - 足立
+    - 藤井(口外)
+    - 落合（60分）
+    hygienists:
+    - 神箸
+    - 角正
+    - 園原
+    - 新美
+    slot_threshold:
+      doctor: 60
+      hygienist: 30
+    web_booking:
+    - 高木A
+    - 高木B
+    - 佐分利
     - 神箸
     - 角正
     - 園原
@@ -337,6 +461,16 @@ staff_by_clinic:
     - TC
     - sp/抜糸
     - ＷＥＢ初診
+    doctors:
+    - 松原
+    - 松原2
+    - 蕪木
+    - 小川
+    hygienists:
+    - 橋本
+    - 眞野
+    - 藤田
+    - 海老原
     web_booking:
     - 松原
     - 蕪木
@@ -376,8 +510,22 @@ staff_by_clinic:
     - 訪問(DH千葉②)
     - 訪問(DH大森)
     disabled: []
-    doctors: []
-    hygienists: []
+    doctors:
+    - 牧村
+    - 牧村２
+    - 青柳
+    - 松原
+    - 淺野
+    - 兼原
+    - 小川
+    - 三枝
+    - 網野
+    hygienists:
+    - 塩澤
+    - 内山
+    - 髙栁
+    - 赤川
+    - 飯岡
     web_booking:
     - 牧村
     - 青柳

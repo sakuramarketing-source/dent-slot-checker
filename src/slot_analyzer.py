@@ -82,21 +82,26 @@ def analyze_doctor_slots(
     doctor_name: str,
     slot_times: List[int],
     required_consecutive: int = 6,
-    interval: int = 5
+    interval: int = 5,
+    threshold_minutes: int = 30
 ) -> Dict[str, Any]:
     """
     特定のドクターのスロットを分析
+
+    Args:
+        threshold_minutes: 空き枠判定の閾値（分）。デフォルト30分。医院・職種別に変更可能。
 
     Returns:
         {
             'doctor': '橋本',
             'blocks': 2,
-            'times': ['9:25-9:55', '14:00-14:30']
+            'times': ['9:25-9:55', '14:00-14:30'],
+            'threshold_minutes': 30
         }
     """
     # 実際のスロット間隔を自動検出（分院ごとに異なる可能性: 5分/10分）
     actual_interval = detect_slot_interval(slot_times, interval)
-    actual_consecutive = 30 // actual_interval  # 30分に必要な連続数
+    actual_consecutive = threshold_minutes // actual_interval  # 閾値分に必要な連続数
 
     # 時間範囲表示用にグループを取得
     _, block_ranges = count_consecutive_blocks(
@@ -114,7 +119,8 @@ def analyze_doctor_slots(
     return {
         'doctor': doctor_name,
         'blocks': actual_blocks,
-        'times': time_strs
+        'times': time_strs,
+        'threshold_minutes': threshold_minutes
     }
 
 
