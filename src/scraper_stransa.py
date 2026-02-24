@@ -421,22 +421,21 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
+    sem = asyncio.Semaphore(3)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
 
-        for clinic in clinics:
-            if clinic.get('system') != 'stransa':
-                continue
+        async def scrape_with_sem(clinic):
+            async with sem:
+                logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
+                chair_slots = await scrape_stransa_clinic(browser, clinic)
+                return clinic['name'], chair_slots if chair_slots is not None else {}
 
-            logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
-
-            chair_slots = await scrape_stransa_clinic(browser, clinic)
-
-            if chair_slots is not None:
-                results[clinic['name']] = chair_slots
-            else:
-                results[clinic['name']] = {}
+        stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
+        tasks = [scrape_with_sem(c) for c in stransa_clinics]
+        for name, slots in await asyncio.gather(*tasks):
+            results[name] = slots
 
         await browser.close()
 
