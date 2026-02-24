@@ -28,6 +28,13 @@ body {
     font-weight: bold;
 }
 
+.nav-user {
+    color: #95a5a6;
+    font-size: 0.85rem;
+    margin-left: auto;
+    padding-left: 1rem;
+}
+
 .nav-links {
     list-style: none;
     display: flex;

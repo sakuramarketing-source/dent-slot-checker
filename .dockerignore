@@ -26,8 +26,8 @@ logs/*.log
 output/*.json
 output/*.csv
 
-# Local config (sensitive data)
-config/clinics.yaml
+# Local config
+# config/clinics.yaml は認証情報削除済みのためDockerに含める
 
 # Tests
 tests

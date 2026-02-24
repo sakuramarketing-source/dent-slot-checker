@@ -1,0 +1,60 @@
+# dent-sys.net系 分院設定
+# 認証情報(id/password)はSecret Managerで管理
+clinics:
+  - name: "さくら歯科"
+    url: "https://www.dent-sys.net/sakura/t/"
+    enabled: true
+
+  - name: "ありす歯科"
+    url: "https://www.dent-sys.net/942alice/t/"
+    enabled: true
+
+  - name: "たんぽぽ歯科"
+    url: "https://www.dent-sys.net/tampopo/t/"
+    enabled: true
+
+  - name: "春日井きらり歯科"
+    url: "https://www.dent-sys.net/814kirari/t/"
+    enabled: true
+
+  - name: "松戸ありす歯科"
+    url: "https://www.dent-sys.net/813arisu/t/"
+    enabled: true
+
+  - name: "池下さくら歯科"
+    url: "https://www.dent-sys.net/844sakura/t/"
+    enabled: true
+
+  - name: "日進赤池たんぽぽ歯科"
+    url: "https://www.dent-sys.net/894akaike/t/"
+    enabled: true
+
+  - name: "春日井アップル歯科"
+    url: "https://www.dent-sys.net/906kasugai/t/"
+    enabled: true
+
+  - name: "流山ハピネス歯科"
+    url: "https://www.dent-sys.net/994sakura-nagareyama/t/"
+    enabled: true
+
+  - name: "クローバー歯科"
+    url: "https://www.dent-sys.net/1017clover/t/"
+    enabled: true
+
+  - name: "流山ありす歯科・矯正歯科"
+    url: "https://www.dent-sys.net/1018alice/t/"
+    enabled: true
+
+# Stransa (Apotool & Box) 分院設定
+stransa_clinics: []
+
+# 共通設定
+settings:
+  consecutive_slots_required: 6
+  minimum_blocks_required: 4
+  slot_interval_minutes: 5
+  exclude_patterns:
+    - "訪問"
+  check_hours:
+    start: 9
+    end: 19

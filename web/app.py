@@ -2,7 +2,7 @@
 
 import os
 import sys
-from flask import Flask
+from flask import Flask, request, g
 
 # 親ディレクトリをパスに追加（srcモジュールを使用するため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,7 +15,7 @@ def create_app():
     app = Flask(__name__)
 
     # 設定
-    app.config['SECRET_KEY'] = 'dent-slot-checker-secret-key'
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
     app.config['JSON_AS_ASCII'] = False  # 日本語をそのまま表示
     app.json.sort_keys = False  # 辞書の挿入順序を保持
 
@@ -23,6 +23,16 @@ def create_app():
     app.config['PROJECT_ROOT'] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     app.config['CONFIG_PATH'] = os.path.join(app.config['PROJECT_ROOT'], 'config')
     app.config['OUTPUT_PATH'] = os.path.join(app.config['PROJECT_ROOT'], 'output')
+
+    # IAPヘッダーからユーザー情報を取得
+    @app.before_request
+    def set_user_from_iap():
+        email = request.headers.get('X-Goog-Authenticated-User-Email', '')
+        g.user_email = email.replace('accounts.google.com:', '') if email else None
+
+    @app.context_processor
+    def inject_user():
+        return {'user_email': getattr(g, 'user_email', None)}
 
     # Blueprintを登録
     app.register_blueprint(main.bp)

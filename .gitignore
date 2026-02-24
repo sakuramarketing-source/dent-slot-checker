@@ -23,8 +23,8 @@ logs/*.log
 output/*.json
 output/*.csv
 
-# Sensitive config (credentials)
-config/clinics.yaml
+# Sensitive config
+# config/clinics.yaml は認証情報削除済みのためコミット可能
 
 # OS
 .DS_Store
