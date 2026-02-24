@@ -4,6 +4,8 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Any
 
+from .secret_manager import get_credentials
+
 
 def load_yaml(file_path: Path) -> Dict[str, Any]:
     """YAMLファイルを読み込む"""
@@ -19,15 +21,29 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
     clinics_config = load_yaml(config_dir / 'clinics.yaml')
     staff_rules = load_yaml(config_dir / 'staff_rules.yaml')
 
+    # Secret Managerまたはclinics.yamlから認証情報を取得
+    credentials = get_credentials(str(config_dir))
+    cred_map = {c['name']: c for c in credentials.get('clinics', [])}
+    stransa_cred_map = {c['name']: c for c in credentials.get('stransa_clinics', [])}
+
     # dent-sys.net 分院
     dent_sys_clinics = clinics_config.get('clinics', [])
-    # dent-sys.net 分院にはsystemフラグを追加
     for clinic in dent_sys_clinics:
         if 'system' not in clinic:
             clinic['system'] = 'dent-sys'
+        # 認証情報をマージ
+        cred = cred_map.get(clinic.get('name'))
+        if cred:
+            clinic.setdefault('id', cred['id'])
+            clinic.setdefault('password', cred['password'])
 
     # Stransa 分院
     stransa_clinics = clinics_config.get('stransa_clinics', [])
+    for clinic in stransa_clinics:
+        cred = stransa_cred_map.get(clinic.get('name'))
+        if cred:
+            clinic.setdefault('id', cred['id'])
+            clinic.setdefault('password', cred['password'])
 
     # 全分院を統合
     all_clinics = dent_sys_clinics + stransa_clinics

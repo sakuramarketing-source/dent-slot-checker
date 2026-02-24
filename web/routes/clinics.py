@@ -3,6 +3,7 @@
 import os
 import yaml
 from flask import Blueprint, jsonify, request, current_app
+from src.secret_manager import get_credentials, save_credentials
 
 bp = Blueprint('clinics', __name__)
 
@@ -30,14 +31,20 @@ def get_clinics():
     """全分院情報を取得"""
     config = load_clinics_config()
     clinics = config.get('clinics', [])
+    config_path = current_app.config['CONFIG_PATH']
+
+    # Secret Managerから認証情報を取得（ログインID表示用）
+    credentials = get_credentials(config_path)
+    cred_map = {c['name']: c for c in credentials.get('clinics', [])}
 
     # パスワードは返さない（セキュリティ）
     result = []
     for clinic in clinics:
+        cred = cred_map.get(clinic.get('name'), {})
         result.append({
             'name': clinic.get('name', ''),
             'url': clinic.get('url', ''),
-            'id': clinic.get('id', ''),
+            'id': cred.get('id', clinic.get('id', '')),
             'enabled': clinic.get('enabled', True)
         })
 
@@ -76,6 +83,7 @@ def toggle_clinic(clinic_name):
 def update_clinic(clinic_name):
     """分院情報を更新"""
     data = request.get_json()
+    config_path = current_app.config['CONFIG_PATH']
     config = load_clinics_config()
     clinics = config.get('clinics', [])
 
@@ -84,10 +92,6 @@ def update_clinic(clinic_name):
         if clinic.get('name') == clinic_name:
             if 'url' in data:
                 clinic['url'] = data['url']
-            if 'id' in data:
-                clinic['id'] = data['id']
-            if 'password' in data:
-                clinic['password'] = data['password']
             if 'enabled' in data:
                 clinic['enabled'] = data['enabled']
             found = True
@@ -98,6 +102,18 @@ def update_clinic(clinic_name):
 
     save_clinics_config(config)
 
+    # 認証情報が含まれる場合はSecret Managerも更新
+    if 'id' in data or 'password' in data:
+        credentials = get_credentials(config_path)
+        for cred in credentials.get('clinics', []):
+            if cred['name'] == clinic_name:
+                if 'id' in data:
+                    cred['id'] = data['id']
+                if 'password' in data:
+                    cred['password'] = data['password']
+                break
+        save_credentials(credentials, config_path)
+
     return jsonify({'success': True, 'clinic': clinic_name})
 
 
@@ -105,24 +121,31 @@ def update_clinic(clinic_name):
 def add_clinic():
     """新しい分院を追加"""
     data = request.get_json()
+    config_path = current_app.config['CONFIG_PATH']
 
     required_fields = ['name', 'url', 'id', 'password']
     for field in required_fields:
         if field not in data:
             return jsonify({'error': f'{field} is required'}), 400
 
+    # 非機密情報をYAMLに追加
     config = load_clinics_config()
-
-    new_clinic = {
+    new_clinic_yaml = {
         'name': data['name'],
         'url': data['url'],
-        'id': data['id'],
-        'password': data['password'],
         'enabled': data.get('enabled', True)
     }
-
-    config['clinics'].append(new_clinic)
+    config['clinics'].append(new_clinic_yaml)
     save_clinics_config(config)
+
+    # 認証情報をSecret Managerに追加
+    credentials = get_credentials(config_path)
+    credentials['clinics'].append({
+        'name': data['name'],
+        'id': data['id'],
+        'password': data['password']
+    })
+    save_credentials(credentials, config_path)
 
     return jsonify({'success': True, 'clinic': data['name']})
 
@@ -130,9 +153,11 @@ def add_clinic():
 @bp.route('/<clinic_name>', methods=['DELETE'])
 def delete_clinic(clinic_name):
     """分院を削除"""
+    config_path = current_app.config['CONFIG_PATH']
+
+    # YAMLから削除
     config = load_clinics_config()
     clinics = config.get('clinics', [])
-
     original_count = len(clinics)
     config['clinics'] = [c for c in clinics if c.get('name') != clinic_name]
 
@@ -140,5 +165,13 @@ def delete_clinic(clinic_name):
         return jsonify({'error': 'Clinic not found'}), 404
 
     save_clinics_config(config)
+
+    # Secret Managerからも削除
+    credentials = get_credentials(config_path)
+    credentials['clinics'] = [
+        c for c in credentials.get('clinics', [])
+        if c['name'] != clinic_name
+    ]
+    save_credentials(credentials, config_path)
 
     return jsonify({'success': True, 'clinic': clinic_name})
