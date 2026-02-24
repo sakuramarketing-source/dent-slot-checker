@@ -120,7 +120,9 @@ def analyze_doctor_slots(
         'doctor': doctor_name,
         'blocks': actual_blocks,
         'times': time_strs,
-        'threshold_minutes': threshold_minutes
+        'threshold_minutes': threshold_minutes,
+        'raw_slot_times': sorted(slot_times),
+        'slot_interval': actual_interval
     }
 
 

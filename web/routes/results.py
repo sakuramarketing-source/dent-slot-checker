@@ -8,6 +8,13 @@ import sys
 import yaml
 from flask import Blueprint, jsonify, request, current_app
 
+# プロジェクトルートをパスに追加
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+from src.slot_analyzer import count_30min_blocks, count_consecutive_blocks, format_time_range
+
 bp = Blueprint('results', __name__)
 
 
@@ -84,6 +91,19 @@ def apply_web_booking_filter(data, staff_rules, settings=None):
         data['summary']['clinics_with_availability'] = clinics_with_availability
 
     return data
+
+
+def _recalculate_detail(detail, threshold):
+    """raw_slot_timesがあれば指定閾値で枠数を再計算"""
+    raw_times = detail.get('raw_slot_times')
+    if not raw_times:
+        return
+    interval = detail.get('slot_interval', 5)
+    consec = threshold // interval
+    detail['blocks'] = count_30min_blocks(raw_times, interval, consec)
+    _, ranges = count_consecutive_blocks(raw_times, consec, interval)
+    detail['times'] = [format_time_range(s, e, interval) for s, e in ranges]
+    detail['threshold_minutes'] = threshold
 
 
 def get_result_files():
@@ -203,20 +223,27 @@ def get_result_with_categories():
 
             for detail in result.get('details', []):
                 staff_name = detail.get('doctor', '')
-                blocks = detail.get('blocks', 0)
 
-                # 職種分類
+                # 職種分類と再計算
                 if staff_name in doctors:
                     detail['category'] = 'doctor'
+                    _recalculate_detail(detail, dr_threshold)
                     detail.setdefault('threshold_minutes', dr_threshold)
-                    doctor_blocks += blocks
                 elif staff_name in hygienists:
                     detail['category'] = 'hygienist'
+                    _recalculate_detail(detail, dh_threshold)
                     detail.setdefault('threshold_minutes', dh_threshold)
-                    hygienist_blocks += blocks
                 else:
                     detail['category'] = 'unknown'
+                    _recalculate_detail(detail, 30)
                     detail.setdefault('threshold_minutes', 30)
+
+                blocks = detail.get('blocks', 0)
+                if detail['category'] == 'doctor':
+                    doctor_blocks += blocks
+                elif detail['category'] == 'hygienist':
+                    hygienist_blocks += blocks
+                else:
                     other_blocks += blocks
 
                 # メモを追加
