@@ -33,6 +33,44 @@
 JSON/CSV 出力 → Web画面で表示
 ```
 
+## 認証・セキュリティ
+
+### IAP（Identity-Aware Proxy）認証
+
+本番環境はGCPのIAPで保護されており、許可されたGoogleアカウントのみアクセス可能。
+
+- **本番URL**: `https://checker.sakurashika-g.jp`
+- **認証方式**: Googleログイン（IAP経由）
+- **許可ユーザー**: sakura.marketing@s-sakurakai.jp, houmon@s-sakurakai.jp
+
+### 認証情報管理（Secret Manager）
+
+分院のログインID・パスワードはGCP Secret Managerで管理。
+
+- **シークレット名**: `clinic-credentials`（プロジェクト: `seo-analytics-app-485802`）
+- **ローカル開発**: `config/clinics.yaml`にid/passwordを手動追加（gitignore対象外だが認証情報は含めないこと）
+- **本番環境**: Cloud RunがSecret Managerから自動取得（`K_SERVICE`環境変数で判定）
+
+## インフラ構成
+
+```
+ユーザー
+  ↓ HTTPS (checker.sakurashika-g.jp)
+静的IP (34.120.247.156)
+  ↓ フォワーディングルール
+HTTPS Proxy (dent-checker-https-proxy)
+  ↓ SSL証明書 (Google管理)
+URL Map (dent-checker-urlmap)
+  ↓
+バックエンドサービス (dent-checker-backend) ← IAP有効
+  ↓ サーバーレスNEG
+Cloud Run (dent-slot-checker)
+```
+
+- **GCPプロジェクト**: `seo-analytics-app-485802`
+- **リージョン**: asia-northeast1
+- **DNS**: checker.sakurashika-g.jp → A 34.120.247.156（Xサーバー）
+
 ## セットアップ
 
 ### ローカル起動
@@ -44,9 +82,8 @@ pip install -r requirements.txt
 # Playwrightブラウザをインストール
 playwright install chromium
 
-# 設定ファイルを作成
-cp config/clinics.yaml.example config/clinics.yaml
-# clinics.yaml に各分院のURL・ID・パスワードを設定
+# clinics.yaml にローカル用の認証情報を追加（id/password）
+# ※本番ではSecret Managerから取得されるため不要
 
 # Web管理画面を起動
 python run_web.py
@@ -70,23 +107,23 @@ gcloud run deploy dent-slot-checker \
   --memory 1Gi
 ```
 
+※ IAP有効化後は `--no-allow-unauthenticated` に変更し、IAP経由のみアクセス可能にする。
+
 ## 設定ファイル
 
 ### config/clinics.yaml
+
+分院のURL・有効/無効の設定。認証情報（id/password）はSecret Managerで管理。
 
 ```yaml
 clinics:                    # dent-sys.net 分院
   - name: "分院名"
     url: "https://www.dent-sys.net/..."
-    id: "ログインID"
-    password: "パスワード"
     enabled: true
 
 stransa_clinics:            # Stransa 分院
   - name: "医院名"
     url: "https://user.stransa.co.jp/login"
-    id: "メールアドレス"
-    password: "パスワード"
     enabled: true
 
 settings:
@@ -116,10 +153,11 @@ dent-slot-checker/
   output/          チェック結果 (JSON/CSV)
   src/
     main.py        メイン処理（スクレイピング→解析→出力）
-    scraper.py     dent-sys.net スクレイパー
+    scraper.py     dent-sys.net スクレイパー（並列実行対応）
     scraper_stransa.py  Stransa スクレイパー
     slot_analyzer.py    空きスロット解析
-    config_loader.py    設定読み込み
+    config_loader.py    設定読み込み（Secret Manager統合）
+    secret_manager.py   GCP Secret Manager連携
     output_writer.py    結果出力
   web/
     app.py         Flask アプリケーション
@@ -132,6 +170,10 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-24** IAP認証対応: Googleログインによるアクセス制御、ナビバーにユーザー表示
+- **2026-02-24** Secret Manager統合: 分院認証情報をGCP Secret Managerで安全に管理
+- **2026-02-24** 並列スクレイピング: asyncio.gather + Semaphore(3)で手動チェックを高速化
+- **2026-02-24** clinics.yamlから認証情報削除（id/password → Secret Managerに移行）
 - **2026-02-23** 医院別・職種別の空き枠判定閾値を設定可能に（Dr/DH別、デフォルト30分）
 - **2026-02-23** スタッフ管理画面: 開院順ソート（全17院）+ アコーディオンUI
 - **2026-02-23** Dr/DH/全てフィルタ切替トグルを追加（ダッシュボード・結果一覧）
