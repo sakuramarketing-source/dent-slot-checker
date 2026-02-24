@@ -46,7 +46,35 @@ clinics:
     enabled: true
 
 # Stransa (Apotool & Box) 分院設定
-stransa_clinics: []
+# 認証情報(id/password)はSecret Managerで管理
+stransa_clinics:
+  - name: "長久手さくら歯科・矯正歯科"
+    url: "https://apo-toolboxes.stransa.co.jp/"
+    enabled: true
+
+  - name: "ヒロデンタルクリニック"
+    url: "https://user.stransa.co.jp/login"
+    enabled: true
+
+  - name: "名駅さくら医院・歯科・皮膚科（歯科）"
+    url: "https://apo-toolboxes.stransa.co.jp/"
+    enabled: true
+
+  - name: "町屋さくら歯科・矯正歯科"
+    url: "https://apo-toolboxes.stransa.co.jp/"
+    enabled: true
+
+  - name: "金沢さくら（歯科）"
+    url: "https://apo-toolboxes.stransa.co.jp/"
+    enabled: true
+
+  - name: "きらり大森"
+    url: "https://apo-toolboxes.stransa.co.jp/"
+    enabled: true
+
+  - name: "きた矯正歯科"
+    url: "https://apo-toolboxes.stransa.co.jp/"
+    enabled: true
 
 # 共通設定
 settings:

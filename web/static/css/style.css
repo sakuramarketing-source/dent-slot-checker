@@ -1093,6 +1093,25 @@ h1 {
     border: 1px solid #90caf9;
 }
 
+/* システムバッジ */
+.system-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-dentsys {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.badge-stransa {
+    background: #fff3e0;
+    color: #e65100;
+}
+
 /* ユーティリティ */
 .loading {
     text-align: center;

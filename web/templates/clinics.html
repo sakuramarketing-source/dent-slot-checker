@@ -26,13 +26,15 @@ async function loadClinics() {
             return;
         }
 
-        let html = '<table class="data-table"><thead><tr><th>分院名</th><th>URL</th><th>ID</th><th>状態</th></tr></thead><tbody>';
+        let html = '<table class="data-table"><thead><tr><th>分院名</th><th>システム</th><th>ID</th><th>状態</th></tr></thead><tbody>';
 
         for (const clinic of data) {
+            const systemLabel = clinic.system === 'stransa' ? 'Stransa' : 'dent-sys';
+            const systemClass = clinic.system === 'stransa' ? 'badge-stransa' : 'badge-dentsys';
             html += `
                 <tr data-clinic="${clinic.name}">
                     <td>${clinic.name}</td>
-                    <td class="url-cell">${clinic.url}</td>
+                    <td><span class="system-badge ${systemClass}">${systemLabel}</span></td>
                     <td>${clinic.id}</td>
                     <td>
                         <label class="toggle-switch">
