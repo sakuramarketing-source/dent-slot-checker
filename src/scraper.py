@@ -74,7 +74,10 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         if await tomorrow_btn.count() > 0:
             await tomorrow_btn.click()
             await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(2)  # iframe読み込み待ち
+            try:
+                await page.wait_for_selector('iframe', timeout=5000)
+            except Exception:
+                await asyncio.sleep(1)
             logger.info("翌日に移動しました")
             return True
 
@@ -83,7 +86,10 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         if await tomorrow_link.count() > 0:
             await tomorrow_link.click()
             await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(2)
+            try:
+                await page.wait_for_selector('iframe', timeout=5000)
+            except Exception:
+                await asyncio.sleep(1)
             logger.info("翌日に移動しました")
             return True
 
@@ -608,22 +614,30 @@ async def scrape_all_clinics(
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
+        sem = asyncio.Semaphore(3)
 
+        async def _scrape_one(clinic, disabled_staff):
+            async with sem:
+                logger.info(f"スクレイピング開始: {clinic['name']}")
+                doctor_slots = await scrape_clinic(
+                    browser, clinic, exclude_patterns, slot_interval, disabled_staff
+                )
+                return clinic['name'], doctor_slots or {}
+
+        tasks = []
         for clinic in clinics:
-            logger.info(f"スクレイピング開始: {clinic['name']}")
-
-            # この分院の無効化スタッフリストを取得
             clinic_staff_config = staff_by_clinic.get(clinic['name'], {})
             disabled_staff = clinic_staff_config.get('disabled', [])
+            tasks.append(_scrape_one(clinic, disabled_staff))
 
-            doctor_slots = await scrape_clinic(
-                browser, clinic, exclude_patterns, slot_interval, disabled_staff
-            )
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
 
-            if doctor_slots is not None:
-                results[clinic['name']] = doctor_slots
-            else:
-                results[clinic['name']] = {}
+        for item in completed:
+            if isinstance(item, Exception):
+                logger.error(f"並列スクレイピングエラー: {item}")
+                continue
+            name, slots = item
+            results[name] = slots
 
         await browser.close()
 
