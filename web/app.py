@@ -13,17 +13,16 @@ from web.routes import main, staff, clinics, rules, results
 
 def _sync_gcs_on_startup(config_path: str):
     """起動時にGCSから設定ファイルをダウンロード"""
-    logger = logging.getLogger(__name__)
     try:
         from src.gcs_helper import download_from_gcs
         staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
         if download_from_gcs('config/staff_rules.yaml', staff_rules_path):
-            logger.info("起動時GCS同期完了: staff_rules.yaml")
+            print("[STARTUP] GCS同期完了: staff_rules.yaml", flush=True)
             staff._gcs_loaded = True
         else:
-            logger.info("GCS同期スキップ（ローカル環境 or GCSにファイルなし）")
+            print("[STARTUP] GCS同期スキップ（ローカル環境 or GCSにファイルなし）", flush=True)
     except Exception as e:
-        logger.warning(f"起動時GCS同期失敗: {e}")
+        print(f"[STARTUP] GCS同期失敗: {e}", flush=True)
 
 
 def create_app():
