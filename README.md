@@ -176,6 +176,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-25** PYTHONUNBUFFERED=1追加、サブプロセス5分タイムアウト、ログ末尾リアルタイム表示、GCSからstaff_rules同期コミット
 - **2026-02-25** GCS起動時同期: アプリ起動時にGCSからstaff_rules.yamlを即座にダウンロード（デプロイ時の設定消失防止）
 - **2026-02-25** 手動チェック安定化: Popen+poll方式に変更（PIPEバッファ問題解消）、サブプロセスGCS同期追加
 - **2026-02-25** GCS永続化: staff_rules.yaml・出力ファイルをGCSバケットに保存（Cloud Run再起動時の設定消失対策）

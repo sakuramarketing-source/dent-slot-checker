@@ -23,6 +23,7 @@ bp = Blueprint('results', __name__)
 _check_process = None
 _check_log_file = None
 _check_started_at = None
+_CHECK_TIMEOUT = 300  # 5分タイムアウト
 
 
 def load_staff_rules():
@@ -314,14 +315,18 @@ def run_check():
     if _check_log_file and not _check_log_file.closed:
         _check_log_file.close()
 
-    _check_log_file = open(log_path, 'w', encoding='utf-8')
+    _check_log_file = open(log_path, 'w', encoding='utf-8', buffering=1)
     _check_started_at = time.time()
+
+    env = os.environ.copy()
+    env['PYTHONUNBUFFERED'] = '1'
 
     _check_process = subprocess.Popen(
         [sys.executable, '-m', 'src.main'],
         stdout=_check_log_file,
         stderr=subprocess.STDOUT,
-        cwd=project_root
+        cwd=project_root,
+        env=env
     )
 
     return jsonify({
@@ -349,12 +354,27 @@ def check_status():
     elapsed = int(time.time() - (_check_started_at or time.time()))
 
     if ret is None:
+        # タイムアウトチェック
+        if elapsed > _CHECK_TIMEOUT:
+            _check_process.kill()
+            if _check_log_file and not _check_log_file.closed:
+                _check_log_file.close()
+            log_tail = _read_log_tail(log_path, 10)
+            return jsonify({
+                'running': False,
+                'success': False,
+                'message': f'タイムアウト ({_CHECK_TIMEOUT}秒)',
+                'error': log_tail,
+                'elapsed': elapsed,
+            })
         # まだ実行中
+        log_tail = _read_log_tail(log_path, 3)
         return jsonify({
             'running': True,
             'success': None,
             'message': 'チェック実行中...',
             'elapsed': elapsed,
+            'log_tail': log_tail,
         })
 
     # 完了 — ログファイルを閉じる

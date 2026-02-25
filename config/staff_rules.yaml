@@ -90,8 +90,34 @@ staff_by_clinic:
     - メモ
     - SP急患
     - キャンセル
-    doctors: []
-    hygienists: []
+    doctors:
+    - Dr冨士谷
+    - Dr
+    - Dr秋葉
+    - Dr秋葉B
+    - Dr黒潮B
+    - Dr黒潮
+    - Dr松坂B
+    - Dr松坂
+    - Dr木谷
+    - Dr木谷B
+    - Dr大鶴
+    - Dr岡本
+    hygienists:
+    - DH佐藤
+    - DH
+    - DH小澤
+    - DH大石
+    - DH中澤
+    - DH祢津
+    web_booking:
+    - Dr秋葉
+    - Dr秋葉B
+    - Dr松坂
+    - Dr松坂B
+    - Dr岡本
+    - DH祢津
+    - DH佐藤
   さくら歯科:
     all_staff:
     - 橋本Ａ
@@ -131,7 +157,7 @@ staff_by_clinic:
     - 訪問⑦
     - 訪問⑧
     - 訪問⑨
-    - 長久手
+    - 訪問⑩
     disabled: []
     doctors:
     - 今川Cキャンセル/変更30％以
@@ -286,8 +312,38 @@ staff_by_clinic:
     - 浦瀬
     - 担当者指定なし
     - TC
-    doctors: []
-    hygienists: []
+    doctors:
+    - 上手
+    - 赤木
+    - 市位
+    - 藤森
+    - 中村
+    - 長谷川
+    - 石田
+    - 坂本
+    - 柿崎
+    - 担当医指定なし
+    hygienists:
+    - 担当者指定なし
+    - 小島
+    - 中山
+    - 尾﨑
+    - 相澤
+    - 久保田
+    - 藤本
+    - 浦瀬
+    slot_threshold:
+      hygienist: 40
+    web_booking:
+    - 上手
+    - 担当医指定なし
+    - 市位
+    - 中村
+    - 担当者指定なし
+    - 相澤
+    - 小島
+    - 中山
+    - 赤木
   名駅さくら医院・歯科・皮膚科（歯科）:
     all_staff:
     - 阪上
@@ -338,8 +394,52 @@ staff_by_clinic:
     - TC
     - メモ
     - 連絡
-    doctors: []
-    hygienists: []
+    doctors:
+    - 阪上
+    - 柿木
+    - 柿木B
+    - 日比B
+    - 市橋
+    - 市橋B
+    - 橋本
+    - 阪上B
+    - 木本
+    - 富士谷
+    - 冨士谷B
+    - 冨士谷
+    - 大橋
+    - 大橋B
+    - 大沼B
+    - 大沼
+    - Dr.希望なし
+    - 日比
+    hygienists:
+    - 中村
+    - 伊藤(楓)
+    - 佐藤
+    - 川竹
+    - 村田
+    - 松本
+    - 桟敷
+    - 鈴木
+    - 石川
+    - 長瀬
+    - 吉田
+    slot_threshold:
+      hygienist: 60
+    web_booking:
+    - 阪上
+    - 伊藤(允)
+    - 伊藤(允)B
+    - 柿木
+    - 日比
+    - 大沼
+    - 大橋
+    - 中村
+    - 川竹
+    - 石川
+    - 松本
+    - 伊藤(楓)
   日進赤池たんぽぽ歯科:
     all_staff:
     - ＳＰ/急患
@@ -667,8 +767,20 @@ staff_by_clinic:
     - 千田
     - 西野
     - TC・SP・急
-    doctors: []
-    hygienists: []
+    doctors:
+    - 黒潮
+    - 増田
+    - 稲川
+    - 高橋
+    hygienists:
+    - 千田
+    - 吉嶺
+    - 西野
+    web_booking:
+    - 黒潮
+    - 増田
+    - 千田
+    - 吉嶺
   金沢さくら医院（歯科）:
     all_staff:
     - 井上
@@ -687,8 +799,22 @@ staff_by_clinic:
     - SP/急患
     - 上から検診
     - TC
-    doctors: []
-    hygienists: []
+    doctors:
+    - 井上
+    - 日比
+    - 梅田
+    hygienists:
+    - 森
+    - 橋爪
+    - 家後
+    - ヘルプDH
+    slot_threshold:
+      doctor: 60
+      hygienist: 60
+    web_booking:
+    - 井上
+    - 橋爪
+    - 家後
   長久手さくら歯科・矯正歯科:
     all_staff:
     - Dr伊藤
@@ -708,5 +834,27 @@ staff_by_clinic:
     - DH久保
     - TC
     - TC矯正
-    doctors: []
-    hygienists: []
+    doctors:
+    - Dr落合
+    - Dr願興寺
+    - Dr西村
+    - Dr橋本
+    - Dr岩田
+    - Dr伊藤
+    - Dr亀川
+    hygienists:
+    - DH関口
+    - DH山本愛
+    - DH久保
+    - DH山本真
+    - DH小森
+    web_booking:
+    - Dr願興寺
+    - Dr落合
+    - Dr伊藤
+    - Dr亀川
+    - DH小森
+    - DH山本真
+    - DH関口
+    - DH山本愛
+    - DH久保

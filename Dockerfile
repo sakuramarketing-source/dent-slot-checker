@@ -29,6 +29,7 @@ RUN mkdir -p output logs
 ENV FLASK_APP=web.app
 ENV FLASK_ENV=production
 ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 8080
