@@ -2,12 +2,28 @@
 
 import os
 import sys
+import logging
 from flask import Flask, request, g, jsonify
 
 # 親ディレクトリをパスに追加（srcモジュールを使用するため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from web.routes import main, staff, clinics, rules, results
+
+
+def _sync_gcs_on_startup(config_path: str):
+    """起動時にGCSから設定ファイルをダウンロード"""
+    logger = logging.getLogger(__name__)
+    try:
+        from src.gcs_helper import download_from_gcs
+        staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
+        if download_from_gcs('config/staff_rules.yaml', staff_rules_path):
+            logger.info("起動時GCS同期完了: staff_rules.yaml")
+            staff._gcs_loaded = True
+        else:
+            logger.info("GCS同期スキップ（ローカル環境 or GCSにファイルなし）")
+    except Exception as e:
+        logger.warning(f"起動時GCS同期失敗: {e}")
 
 
 def create_app():
@@ -46,6 +62,9 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({'error': 'Internal server error', 'success': False}), 500
         return e
+
+    # Cloud Run起動時にGCSから最新のstaff_rules.yamlをダウンロード
+    _sync_gcs_on_startup(app.config['CONFIG_PATH'])
 
     # Blueprintを登録
     app.register_blueprint(main.bp)

@@ -110,6 +110,11 @@ gcloud run deploy dent-slot-checker \
 
 ※ IAP有効化後は `--no-allow-unauthenticated` に変更し、IAP経由のみアクセス可能にする。
 
+**デプロイ前**: GCSから最新設定を同期してからデプロイすること：
+```bash
+gcloud storage cp gs://dent-checker-config/config/staff_rules.yaml config/staff_rules.yaml
+```
+
 ## 設定ファイル
 
 ### config/clinics.yaml
@@ -171,6 +176,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-25** GCS起動時同期: アプリ起動時にGCSからstaff_rules.yamlを即座にダウンロード（デプロイ時の設定消失防止）
 - **2026-02-25** 手動チェック安定化: Popen+poll方式に変更（PIPEバッファ問題解消）、サブプロセスGCS同期追加
 - **2026-02-25** GCS永続化: staff_rules.yaml・出力ファイルをGCSバケットに保存（Cloud Run再起動時の設定消失対策）
 - **2026-02-25** 手動チェック非同期化: バックグラウンド実行+ポーリング方式に変更（タイムアウト解消）

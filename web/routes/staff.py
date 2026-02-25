@@ -42,7 +42,9 @@ def load_staff_rules():
     config_path = current_app.config['CONFIG_PATH']
     staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
 
-    # Cloud Run起動時にGCSからダウンロード（初回のみ）
+    # GCSから最新版をダウンロード（初回のみ）
+    # app.py起動時にダウンロード済みの場合はスキップ
+    # ローカル環境ではdownload_from_gcsがFalseを返すが、毎回呼ばないようフラグ設定
     if not _gcs_loaded:
         download_from_gcs('config/staff_rules.yaml', staff_rules_path)
         _gcs_loaded = True
