@@ -5,6 +5,7 @@ import json
 import glob
 import yaml
 from flask import Blueprint, jsonify, request, current_app
+from src.gcs_helper import upload_to_gcs, download_from_gcs
 
 bp = Blueprint('staff', __name__)
 
@@ -32,10 +33,19 @@ CLINIC_ORDER = [
 ]
 
 
+_gcs_loaded = False
+
+
 def load_staff_rules():
-    """staff_rules.yamlを読み込む"""
+    """staff_rules.yamlを読み込む（Cloud RunならGCSから取得）"""
+    global _gcs_loaded
     config_path = current_app.config['CONFIG_PATH']
     staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
+
+    # Cloud Run起動時にGCSからダウンロード（初回のみ）
+    if not _gcs_loaded:
+        download_from_gcs('config/staff_rules.yaml', staff_rules_path)
+        _gcs_loaded = True
 
     if not os.path.exists(staff_rules_path):
         return {'staff_by_clinic': {}}
@@ -45,12 +55,15 @@ def load_staff_rules():
 
 
 def save_staff_rules(data):
-    """staff_rules.yamlに保存"""
+    """staff_rules.yamlに保存（Cloud RunならGCSにもアップロード）"""
     config_path = current_app.config['CONFIG_PATH']
     staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
 
     with open(staff_rules_path, 'w', encoding='utf-8') as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    # GCSにもアップロード
+    upload_to_gcs(staff_rules_path, 'config/staff_rules.yaml')
 
 
 def load_clinics_config():

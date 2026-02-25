@@ -211,21 +211,45 @@ document.getElementById('runCheckBtn').addEventListener('click', async function(
     status.className = 'status-message';
 
     try {
-        const response = await fetch('/api/results/check', {
-            method: 'POST'
-        });
+        const response = await fetch('/api/results/check', { method: 'POST' });
         const data = await response.json();
 
-        if (data.success) {
-            status.textContent = 'チェック完了！ページを更新します...';
-            status.classList.add('success');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            status.textContent = 'エラー: ' + (data.message || 'チェック失敗');
+        if (!data.success) {
+            status.textContent = 'エラー: ' + (data.message || 'チェック開始失敗');
             status.classList.add('error');
             btn.disabled = false;
             btn.textContent = '手動チェック実行';
+            return;
         }
+
+        status.textContent = 'チェック実行中... (0秒)';
+
+        // ポーリングで完了を待つ
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/results/check/status');
+                const st = await res.json();
+
+                if (st.running) {
+                    status.textContent = `チェック実行中... (${st.elapsed}秒)`;
+                } else {
+                    clearInterval(pollInterval);
+                    if (st.success) {
+                        status.textContent = 'チェック完了！ページを更新します...';
+                        status.classList.add('success');
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        status.textContent = 'エラー: ' + (st.message || 'チェック失敗');
+                        status.classList.add('error');
+                        btn.disabled = false;
+                        btn.textContent = '手動チェック実行';
+                    }
+                }
+            } catch (e) {
+                // ポーリング失敗は無視して続行
+            }
+        }, 3000);
+
     } catch (error) {
         status.textContent = 'エラー: ' + error.message;
         status.classList.add('error');

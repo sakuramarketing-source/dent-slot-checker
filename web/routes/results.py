@@ -5,6 +5,8 @@ import json
 import glob
 import subprocess
 import sys
+import threading
+import time
 import yaml
 from flask import Blueprint, jsonify, request, current_app
 
@@ -14,20 +16,24 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from src.slot_analyzer import count_30min_blocks, count_consecutive_blocks, format_time_range
+from src.gcs_helper import sync_output_from_gcs
 
 bp = Blueprint('results', __name__)
 
+# バックグラウンドチェック状態管理
+_check_status = {
+    'running': False,
+    'success': None,
+    'message': '',
+    'started_at': None,
+}
+_check_lock = threading.Lock()
+
 
 def load_staff_rules():
-    """staff_rules.yamlを読み込む"""
-    config_path = current_app.config['CONFIG_PATH']
-    staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
-
-    if not os.path.exists(staff_rules_path):
-        return {'staff_by_clinic': {}}
-
-    with open(staff_rules_path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f) or {'staff_by_clinic': {}}
+    """staff_rules.yamlを読み込む（staff.pyの共通関数を使用）"""
+    from web.routes.staff import load_staff_rules as _load
+    return _load()
 
 
 def load_clinics_settings():
@@ -106,9 +112,19 @@ def _recalculate_detail(detail, threshold):
     detail['threshold_minutes'] = threshold
 
 
+_output_synced = False
+
+
 def get_result_files():
     """結果ファイルのリストを取得"""
+    global _output_synced
     output_path = current_app.config['OUTPUT_PATH']
+
+    # Cloud Run起動時にGCSからoutputファイルを同期（初回のみ）
+    if not _output_synced:
+        sync_output_from_gcs(output_path)
+        _output_synced = True
+
     json_files = glob.glob(os.path.join(output_path, 'slot_check_*.json'))
 
     files = []
@@ -270,41 +286,80 @@ def get_result_with_categories():
         return jsonify({'error': str(e)}), 500
 
 
-@bp.route('/check', methods=['POST'])
-def run_check():
-    """手動でチェックを実行"""
-    project_root = current_app.config['PROJECT_ROOT']
-
+def _run_check_background(project_root):
+    """バックグラウンドでチェックを実行"""
+    global _check_status
     try:
-        # サブプロセスでチェックを実行（モジュールとして実行）
         result = subprocess.run(
             [sys.executable, '-m', 'src.main'],
             capture_output=True,
             text=True,
             cwd=project_root,
-            timeout=600  # 10分タイムアウト
+            timeout=600
         )
+        with _check_lock:
+            if result.returncode == 0:
+                _check_status['success'] = True
+                _check_status['message'] = 'チェック完了'
+            else:
+                _check_status['success'] = False
+                _check_status['message'] = f'チェック失敗: {result.stderr[:200]}'
+    except subprocess.TimeoutExpired:
+        with _check_lock:
+            _check_status['success'] = False
+            _check_status['message'] = 'タイムアウト（10分超過）'
+    except Exception as e:
+        with _check_lock:
+            _check_status['success'] = False
+            _check_status['message'] = str(e)
+    finally:
+        with _check_lock:
+            _check_status['running'] = False
 
-        if result.returncode == 0:
-            return jsonify({
-                'success': True,
-                'message': 'Check completed successfully',
-                'output': result.stdout
-            })
-        else:
+
+@bp.route('/check', methods=['POST'])
+def run_check():
+    """手動でチェックを実行（バックグラウンド）"""
+    global _check_status
+    project_root = current_app.config['PROJECT_ROOT']
+
+    with _check_lock:
+        if _check_status['running']:
+            elapsed = int(time.time() - (_check_status['started_at'] or time.time()))
             return jsonify({
                 'success': False,
-                'message': 'Check failed',
-                'error': result.stderr
-            }), 500
+                'message': f'既にチェック実行中です（{elapsed}秒経過）'
+            }), 409
 
-    except subprocess.TimeoutExpired:
-        return jsonify({
-            'success': False,
-            'message': 'Check timed out'
-        }), 500
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        _check_status = {
+            'running': True,
+            'success': None,
+            'message': 'チェック実行中...',
+            'started_at': time.time(),
+        }
+
+    thread = threading.Thread(
+        target=_run_check_background,
+        args=(project_root,),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({
+        'success': True,
+        'message': 'チェックを開始しました'
+    })
+
+
+@bp.route('/check/status', methods=['GET'])
+def check_status():
+    """チェック実行状態を取得"""
+    with _check_lock:
+        status = dict(_check_status)
+
+    if status['started_at']:
+        status['elapsed'] = int(time.time() - status['started_at'])
+    else:
+        status['elapsed'] = 0
+
+    return jsonify(status)

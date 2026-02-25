@@ -2,7 +2,7 @@
 
 import os
 import sys
-from flask import Flask, request, g
+from flask import Flask, request, g, jsonify
 
 # 親ディレクトリをパスに追加（srcモジュールを使用するため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,6 +33,19 @@ def create_app():
     @app.context_processor
     def inject_user():
         return {'user_email': getattr(g, 'user_email', None)}
+
+    # APIエンドポイント用JSONエラーハンドラ
+    @app.errorhandler(404)
+    def not_found(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Not found', 'success': False}), 404
+        return e
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Internal server error', 'success': False}), 500
+        return e
 
     # Blueprintを登録
     app.register_blueprint(main.bp)

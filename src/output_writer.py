@@ -5,6 +5,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any
+from src.gcs_helper import upload_to_gcs
 
 
 def write_json(results: Dict[str, Any], output_path: Path) -> None:
@@ -104,6 +105,9 @@ def save_results(
             write_json(results, output_path)
         elif fmt == 'csv':
             write_csv(results, output_path)
+
+        # GCSにもアップロード
+        upload_to_gcs(str(output_path), f'output/{output_path.name}')
 
         created_files.append(output_path)
 

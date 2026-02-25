@@ -23,6 +23,13 @@
 
 {% block scripts %}
 <script>
+async function safeJson(response) {
+    if (!response.ok) {
+        throw new Error(`サーバーエラー (${response.status})`);
+    }
+    return response.json();
+}
+
 function toggleAccordion(header) {
     const body = header.nextElementSibling;
     const arrow = header.querySelector('.accordion-arrow');
@@ -40,7 +47,7 @@ async function loadStaff() {
 
     try {
         const response = await fetch('/api/staff/');
-        const data = await response.json();
+        const data = await safeJson(response);
 
         if (Object.keys(data).length === 0) {
             container.innerHTML = '<div class="no-data">スタッフデータがありません。先にチェックを実行してください。</div>';
@@ -162,7 +169,7 @@ async function handleToggle(checkbox) {
             body: JSON.stringify({ name })
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
 
         if (data.success) {
             // UI更新
@@ -196,7 +203,7 @@ async function handleWebBookingToggle(checkbox) {
             body: JSON.stringify({ name })
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
 
         if (data.success) {
             if (data.web_booking) {
@@ -236,7 +243,7 @@ async function handleCategoryClick(event) {
             body: JSON.stringify({ name, category })
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
 
         if (!data.success) {
             alert('保存に失敗しました: ' + (data.error || ''));
@@ -267,7 +274,7 @@ async function syncStaff() {
             }
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
 
         if (data.success) {
             statusEl.textContent = data.message;
@@ -307,7 +314,7 @@ async function updateMemo(input, clinic, name) {
             body: JSON.stringify({ name, memo })
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
         if (!data.success) {
             alert('メモの保存に失敗しました');
         }
@@ -358,7 +365,7 @@ async function handleTagInput(event, input, clinic, name) {
             body: JSON.stringify({ name, tags: newTags })
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success) {
             // UIを更新
             const tagsContainer = input.closest('.tags-container');
@@ -393,7 +400,7 @@ async function removeTag(btn, clinic, name, tagToRemove) {
             body: JSON.stringify({ name, tags: newTags })
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success) {
             btn.closest('.staff-tag').remove();
         } else {
@@ -424,7 +431,7 @@ async function updateThreshold(input, clinic) {
             body: JSON.stringify(payload)
         });
 
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success) {
             input.style.borderColor = '#27ae60';
             setTimeout(() => { input.style.borderColor = ''; }, 1500);
