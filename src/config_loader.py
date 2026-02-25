@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Any
 
 from .secret_manager import get_credentials
+from .gcs_helper import download_from_gcs
 
 
 def load_yaml(file_path: Path) -> Dict[str, Any]:
@@ -17,6 +18,9 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
     """全ての設定ファイルを読み込む"""
     if config_dir is None:
         config_dir = Path(__file__).parent.parent / 'config'
+
+    # Cloud RunではGCSから最新のstaff_rules.yamlを取得
+    download_from_gcs('config/staff_rules.yaml', str(config_dir / 'staff_rules.yaml'))
 
     clinics_config = load_yaml(config_dir / 'clinics.yaml')
     staff_rules = load_yaml(config_dir / 'staff_rules.yaml')

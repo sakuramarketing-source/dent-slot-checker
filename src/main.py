@@ -6,6 +6,7 @@ dent-sys.net および Stransa (Apotool & Box) に対応
 import asyncio
 import argparse
 import logging
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Any
@@ -298,7 +299,7 @@ def main():
     results = asyncio.run(main_async(headless, output_formats, system_filter))
 
     # チェック完了 → 常に0（空きの有無に関わらず正常終了）
-    exit(0)
+    sys.exit(0)
 
 
 if __name__ == '__main__':

@@ -5,7 +5,6 @@ import json
 import glob
 import subprocess
 import sys
-import threading
 import time
 import yaml
 from flask import Blueprint, jsonify, request, current_app
@@ -21,13 +20,9 @@ from src.gcs_helper import sync_output_from_gcs
 bp = Blueprint('results', __name__)
 
 # バックグラウンドチェック状態管理
-_check_status = {
-    'running': False,
-    'success': None,
-    'message': '',
-    'started_at': None,
-}
-_check_lock = threading.Lock()
+_check_process = None
+_check_log_file = None
+_check_started_at = None
 
 
 def load_staff_rules():
@@ -286,64 +281,48 @@ def get_result_with_categories():
         return jsonify({'error': str(e)}), 500
 
 
-def _run_check_background(project_root):
-    """バックグラウンドでチェックを実行"""
-    global _check_status
+def _read_log_tail(log_path, lines=10):
+    """ログファイルの末尾を読む"""
     try:
-        result = subprocess.run(
-            [sys.executable, '-m', 'src.main'],
-            capture_output=True,
-            text=True,
-            cwd=project_root,
-            timeout=600
-        )
-        with _check_lock:
-            if result.returncode == 0:
-                _check_status['success'] = True
-                _check_status['message'] = 'チェック完了'
-            else:
-                _check_status['success'] = False
-                _check_status['message'] = f'チェック失敗: {result.stderr[:200]}'
-    except subprocess.TimeoutExpired:
-        with _check_lock:
-            _check_status['success'] = False
-            _check_status['message'] = 'タイムアウト（10分超過）'
-    except Exception as e:
-        with _check_lock:
-            _check_status['success'] = False
-            _check_status['message'] = str(e)
-    finally:
-        with _check_lock:
-            _check_status['running'] = False
+        with open(log_path, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+        return ''.join(all_lines[-lines:]).strip()
+    except Exception:
+        return ''
 
 
 @bp.route('/check', methods=['POST'])
 def run_check():
-    """手動でチェックを実行（バックグラウンド）"""
-    global _check_status
+    """手動でチェックを実行（Popenでバックグラウンド起動）"""
+    global _check_process, _check_log_file, _check_started_at
     project_root = current_app.config['PROJECT_ROOT']
 
-    with _check_lock:
-        if _check_status['running']:
-            elapsed = int(time.time() - (_check_status['started_at'] or time.time()))
-            return jsonify({
-                'success': False,
-                'message': f'既にチェック実行中です（{elapsed}秒経過）'
-            }), 409
+    # 既に実行中なら拒否
+    if _check_process and _check_process.poll() is None:
+        elapsed = int(time.time() - (_check_started_at or time.time()))
+        return jsonify({
+            'success': False,
+            'message': f'既にチェック実行中です（{elapsed}秒経過）'
+        }), 409
 
-        _check_status = {
-            'running': True,
-            'success': None,
-            'message': 'チェック実行中...',
-            'started_at': time.time(),
-        }
+    # ログディレクトリ確保
+    log_dir = os.path.join(project_root, 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, 'check_latest.log')
 
-    thread = threading.Thread(
-        target=_run_check_background,
-        args=(project_root,),
-        daemon=True
+    # 前回のログファイルハンドルを閉じる
+    if _check_log_file and not _check_log_file.closed:
+        _check_log_file.close()
+
+    _check_log_file = open(log_path, 'w', encoding='utf-8')
+    _check_started_at = time.time()
+
+    _check_process = subprocess.Popen(
+        [sys.executable, '-m', 'src.main'],
+        stdout=_check_log_file,
+        stderr=subprocess.STDOUT,
+        cwd=project_root
     )
-    thread.start()
 
     return jsonify({
         'success': True,
@@ -354,12 +333,51 @@ def run_check():
 @bp.route('/check/status', methods=['GET'])
 def check_status():
     """チェック実行状態を取得"""
-    with _check_lock:
-        status = dict(_check_status)
+    global _check_process, _check_log_file
+    project_root = current_app.config['PROJECT_ROOT']
+    log_path = os.path.join(project_root, 'logs', 'check_latest.log')
 
-    if status['started_at']:
-        status['elapsed'] = int(time.time() - status['started_at'])
+    if _check_process is None:
+        return jsonify({
+            'running': False,
+            'success': None,
+            'message': 'チェック未実行',
+            'elapsed': 0,
+        })
+
+    ret = _check_process.poll()
+    elapsed = int(time.time() - (_check_started_at or time.time()))
+
+    if ret is None:
+        # まだ実行中
+        return jsonify({
+            'running': True,
+            'success': None,
+            'message': 'チェック実行中...',
+            'elapsed': elapsed,
+        })
+
+    # 完了 — ログファイルを閉じる
+    if _check_log_file and not _check_log_file.closed:
+        _check_log_file.close()
+
+    # GCSからの新しいoutputを次回読み込みで取得するためフラグリセット
+    global _output_synced
+    _output_synced = False
+
+    if ret == 0:
+        return jsonify({
+            'running': False,
+            'success': True,
+            'message': 'チェック完了',
+            'elapsed': elapsed,
+        })
     else:
-        status['elapsed'] = 0
-
-    return jsonify(status)
+        error_detail = _read_log_tail(log_path, 15)
+        return jsonify({
+            'running': False,
+            'success': False,
+            'message': f'チェック失敗 (exit code {ret})',
+            'error': error_detail,
+            'elapsed': elapsed,
+        })
