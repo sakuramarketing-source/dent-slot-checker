@@ -104,7 +104,8 @@ gcloud run deploy dent-slot-checker \
   --source . \
   --region asia-northeast1 \
   --allow-unauthenticated \
-  --memory 1Gi
+  --memory 2Gi \
+  --timeout 900
 ```
 
 ※ IAP有効化後は `--no-allow-unauthenticated` に変更し、IAP経由のみアクセス可能にする。
@@ -170,6 +171,12 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-25** スタッフ同期完了: 全18分院のスタッフデータをローカル同期で永続化
+- **2026-02-25** Stransa ログイン安定化: オフィス選択ページ対応強化、SPA描画待ち追加
+- **2026-02-24** Stransa分院にsystemフィールド設定（スクレイピング・同期動作修正）
+- **2026-02-24** 手動チェック3点修正: Semaphore(6/5)高速化、exit(0)修正、Stransa同期追加
+- **2026-02-24** Stransa並列スクレイピング: asyncio.gather + Semaphore(5)、Cloud Runタイムアウト900s
+- **2026-02-24** 医院並び順を沿革順に更新（全18院）、金沢さくら医院リネーム
 - **2026-02-24** IAP認証対応: Googleログインによるアクセス制御、ナビバーにユーザー表示
 - **2026-02-24** Secret Manager統合: 分院認証情報をGCP Secret Managerで安全に管理
 - **2026-02-24** 並列スクレイピング: asyncio.gather + Semaphore(3)で手動チェックを高速化

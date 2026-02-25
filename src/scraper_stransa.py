@@ -48,14 +48,38 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         # オフィス選択ページ (/office) の場合、カレンダーへ移動
         if '/office' in current_url:
             logger.info(f"オフィス選択ページ検出: {clinic['name']}")
-            # カレンダーページへ直接移動
-            calendar_url = current_url.replace('/office', '/calendar/')
-            await page.goto(calendar_url)
-            await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(2)
+            # まずオフィス名リンクをクリックして選択を試みる
+            office_link = page.locator(
+                f'a:has-text("{clinic["name"]}"), '
+                f'button:has-text("{clinic["name"]}")'
+            )
+            if await office_link.count() > 0:
+                await office_link.first.click()
+                await page.wait_for_load_state('networkidle')
+                await asyncio.sleep(2)
+            else:
+                # フォールバック: URL置換でカレンダーへ直接移動
+                calendar_url = current_url.replace('/office', '/calendar/')
+                await page.goto(calendar_url)
+                await page.wait_for_load_state('networkidle')
+                await asyncio.sleep(2)
             current_url = page.url
 
+            # まだofficeページの場合はリトライ
+            if '/office' in current_url:
+                logger.warning(f"オフィス選択が完了しない、URL置換でリトライ: {clinic['name']}")
+                calendar_url = current_url.replace('/office', '/calendar/')
+                await page.goto(calendar_url)
+                await page.wait_for_load_state('networkidle')
+                await asyncio.sleep(2)
+                current_url = page.url
+
         if '/calendar/' in current_url:
+            # SPAのカレンダー描画を待つ
+            try:
+                await page.wait_for_selector('table tr.caption, table thead', timeout=10000)
+            except Exception:
+                await asyncio.sleep(3)
             logger.info(f"ログイン成功: {clinic['name']}")
             return True
         else:

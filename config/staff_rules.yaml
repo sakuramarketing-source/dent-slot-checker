@@ -604,10 +604,22 @@ staff_by_clinic:
     doctors: []
     hygienists: []
   金沢さくら医院（歯科）:
-    all_staff: []
+    all_staff:
+    - Dr井上　チェア3
+    - DHチェア3
+    - DH家後　チェア5
+    - DH橋爪　チェア6
+    - チェア7
+    - チェア8
     doctors: []
     hygienists: []
   長久手さくら歯科・矯正歯科:
-    all_staff: []
+    all_staff:
+    - 亀川
+    - TC
+    - DH1
+    - DH2
+    - DH3
+    - 矯正
     doctors: []
     hygienists: []
