@@ -201,36 +201,41 @@ async def main_async(
     total_clinics = 0
     clinics_with_availability = 0
 
-    # dent-sys.net スクレイピング
+    # dent-sys + Stransa を並列スクレイピング
+    scrape_tasks = []
+    task_labels = []
+
     if dent_sys_clinics:
         logger.info("=== dent-sys.net スクレイピング開始 ===")
-        dent_scrape_results = await scrape_all_clinics(
+        scrape_tasks.append(scrape_all_clinics(
             dent_sys_clinics,
             exclude_patterns,
             slot_settings['slot_interval_minutes'],
             headless,
             str(config_path)
-        )
+        ))
+        task_labels.append('dent-sys')
 
-        # 結果分析
-        dent_analysis = analyze_results(dent_scrape_results, slot_settings, 'dent-sys', staff_by_clinic)
-        all_results.extend(dent_analysis['results'])
-        total_clinics += dent_analysis['summary']['total_clinics']
-        clinics_with_availability += dent_analysis['summary']['clinics_with_availability']
-
-    # Stransa スクレイピング
     if stransa_clinics:
         logger.info("=== Stransa スクレイピング開始 ===")
-        stransa_scrape_results = await scrape_all_stransa_clinics(
+        scrape_tasks.append(scrape_all_stransa_clinics(
             stransa_clinics,
             headless
-        )
+        ))
+        task_labels.append('stransa')
 
-        # 結果分析
-        stransa_analysis = analyze_results(stransa_scrape_results, slot_settings, 'stransa', staff_by_clinic)
-        all_results.extend(stransa_analysis['results'])
-        total_clinics += stransa_analysis['summary']['total_clinics']
-        clinics_with_availability += stransa_analysis['summary']['clinics_with_availability']
+    # 両システム同時実行
+    scrape_results_list = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+
+    for label, scrape_result in zip(task_labels, scrape_results_list):
+        if isinstance(scrape_result, Exception):
+            logger.error(f"{label} スクレイピング失敗: {scrape_result}")
+            continue
+        system_type = label
+        analysis = analyze_results(scrape_result, slot_settings, system_type, staff_by_clinic)
+        all_results.extend(analysis['results'])
+        total_clinics += analysis['summary']['total_clinics']
+        clinics_with_availability += analysis['summary']['clinics_with_availability']
 
     # 統合結果を作成
     check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
