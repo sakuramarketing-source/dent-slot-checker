@@ -23,7 +23,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
     try:
         await page.goto(clinic['url'])
         await page.wait_for_load_state('networkidle')
-        await asyncio.sleep(2)  # SPA読み込み待ち
+        await asyncio.sleep(1)  # SPA読み込み待ち
 
         # メールアドレス入力
         email_input = page.locator('input[type="text"], input[type="email"]').first
@@ -40,7 +40,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         if await login_btn.count() > 0:
             await login_btn.click()
             await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(3)  # ログイン後の読み込み待ち
+            await asyncio.sleep(1.5)  # ログイン後の読み込み待ち
 
         # ログイン成功確認
         current_url = page.url
@@ -421,7 +421,7 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
-    sem = asyncio.Semaphore(3)
+    sem = asyncio.Semaphore(5)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)

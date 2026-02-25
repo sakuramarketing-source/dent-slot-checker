@@ -297,10 +297,8 @@ def main():
     # 非同期処理を実行
     results = asyncio.run(main_async(headless, output_formats, system_filter))
 
-    # 終了コード: 条件を満たす分院があれば0、なければ1
-    clinics_available = results['summary']['clinics_with_availability']
-    exit_code = 0 if clinics_available > 0 else 1
-    exit(exit_code)
+    # チェック完了 → 常に0（空きの有無に関わらず正常終了）
+    exit(0)
 
 
 if __name__ == '__main__':

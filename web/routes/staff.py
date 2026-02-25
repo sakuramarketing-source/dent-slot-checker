@@ -435,6 +435,7 @@ def sync_staff():
     # srcモジュールをインポート
     sys.path.insert(0, current_app.config['PROJECT_ROOT'])
     from src.scraper import sync_all_staff
+    from src.scraper_stransa import sync_stransa_staff
     from src.config_loader import load_config, get_enabled_clinics
 
     try:
@@ -442,8 +443,15 @@ def sync_staff():
         config = load_config()
         clinics = get_enabled_clinics(config)
 
-        # 非同期処理を実行
-        sync_results = asyncio.run(sync_all_staff(clinics, headless=True))
+        # dent-sys 同期
+        dent_sys_clinics = [c for c in clinics if c.get('system') != 'stransa']
+        sync_results = asyncio.run(sync_all_staff(dent_sys_clinics, headless=True))
+
+        # Stransa 同期
+        stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
+        if stransa_clinics:
+            stransa_results = asyncio.run(sync_stransa_staff(stransa_clinics, headless=True))
+            sync_results.update(stransa_results)
 
         # staff_rules.yaml を更新
         staff_rules = load_staff_rules()

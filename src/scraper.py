@@ -614,7 +614,7 @@ async def scrape_all_clinics(
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
-        sem = asyncio.Semaphore(3)
+        sem = asyncio.Semaphore(6)
 
         async def _scrape_one(clinic, disabled_staff):
             async with sem:
