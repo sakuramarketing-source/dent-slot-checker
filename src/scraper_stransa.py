@@ -231,6 +231,53 @@ async def get_stransa_chairs(page: Page) -> Dict[int, str]:
     return chairs
 
 
+async def get_stransa_staff_from_settings(page: Page) -> List[str]:
+    """
+    設定 > スタッフページから全スタッフ名を取得
+
+    カレンダーのカラムヘッダーではなく、/user/staffs の設定ページから
+    実際のスタッフ名一覧を取得する。
+
+    Returns:
+        スタッフ名のリスト
+    """
+    staff_names = []
+
+    try:
+        await page.goto(
+            'https://apo-toolboxes.stransa.co.jp/user/staffs',
+            timeout=15000
+        )
+        await asyncio.sleep(3)
+
+        # /user/staffs にいるか確認
+        if '/user/staffs' not in page.url:
+            logger.warning(f"スタッフ設定ページに遷移できず: {page.url}")
+            return staff_names
+
+        # テーブル構造: 複数tableの各行に名前列がある
+        tables = await page.locator('table').all()
+        for table in tables:
+            rows = await table.locator('tr').all()
+            for row in rows:
+                cells = await row.locator('td').all()
+                if cells:
+                    name = (await cells[0].text_content() or '').strip()
+                    # フィルタ: 空、ヘッダー、改行含み（ナビテキスト）、長すぎる名前を除外
+                    if (name and name != '名前'
+                            and '\n' not in name
+                            and len(name) <= 30
+                            and name not in staff_names):
+                        staff_names.append(name)
+
+        logger.info(f"スタッフ設定ページから{len(staff_names)}名取得")
+
+    except Exception as e:
+        logger.error(f"スタッフ設定ページ取得エラー: {e}")
+
+    return staff_names
+
+
 def is_staff_column(text: str) -> bool:
     """スタッフ/チェアカラムかどうかを判定"""
     if not text:
@@ -471,14 +518,14 @@ async def sync_stransa_staff(
     headless: bool = True
 ) -> Dict[str, List[str]]:
     """
-    全Stransa分院のチェア名を同期取得
+    全Stransa分院のスタッフ名を設定ページから同期取得
 
     Args:
         clinics: 分院設定リスト
         headless: ヘッドレスモードで実行するか
 
     Returns:
-        {分院名: [全チェア名リスト]} の辞書
+        {分院名: [全スタッフ名リスト]} の辞書
     """
     results = {}
 
@@ -489,7 +536,7 @@ async def sync_stransa_staff(
             if clinic.get('system') != 'stransa':
                 continue
 
-            logger.info(f"Stransa チェア同期中: {clinic['name']}")
+            logger.info(f"Stransa スタッフ同期中: {clinic['name']}")
             page = await browser.new_page()
 
             try:
@@ -497,9 +544,9 @@ async def sync_stransa_staff(
                     results[clinic['name']] = []
                     continue
 
-                chairs = await get_stransa_chairs(page)
-                results[clinic['name']] = list(chairs.values())
-                logger.info(f"{clinic['name']}: {len(chairs)}チェア取得")
+                staff = await get_stransa_staff_from_settings(page)
+                results[clinic['name']] = staff
+                logger.info(f"{clinic['name']}: {len(staff)}名取得")
 
             except Exception as e:
                 logger.error(f"同期エラー: {clinic['name']} - {e}")
