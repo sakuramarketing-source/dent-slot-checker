@@ -6,7 +6,11 @@
 <h1>ダッシュボード</h1>
 
 <div class="dashboard-actions">
-    <button id="runCheckBtn" class="btn btn-primary">手動チェック実行</button>
+    <div class="check-btn-group">
+        <button class="btn btn-primary check-btn" data-system="">全てチェック</button>
+        <button class="btn btn-outline check-btn" data-system="dent-sys">dent-sysのみ</button>
+        <button class="btn btn-outline check-btn" data-system="stransa">Stransaのみ</button>
+    </div>
     <span id="checkStatus" class="status-message"></span>
 </div>
 
@@ -201,61 +205,71 @@
     }
 })();
 
-document.getElementById('runCheckBtn').addEventListener('click', async function() {
-    const btn = this;
-    const status = document.getElementById('checkStatus');
+document.querySelectorAll('.check-btn').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+        const allBtns = document.querySelectorAll('.check-btn');
+        const status = document.getElementById('checkStatus');
+        const systemFilter = this.dataset.system || null;
+        const originalText = this.textContent;
 
-    btn.disabled = true;
-    btn.textContent = 'チェック中...';
-    status.textContent = '';
-    status.className = 'status-message';
+        allBtns.forEach(function(b) { b.disabled = true; });
+        this.textContent = 'チェック中...';
+        status.textContent = '';
+        status.className = 'status-message';
 
-    try {
-        const response = await fetch('/api/results/check', { method: 'POST' });
-        const data = await response.json();
+        try {
+            const body = systemFilter ? JSON.stringify({ system: systemFilter }) : '{}';
+            const response = await fetch('/api/results/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            });
+            const data = await response.json();
 
-        if (!data.success) {
-            status.textContent = 'エラー: ' + (data.message || 'チェック開始失敗');
-            status.classList.add('error');
-            btn.disabled = false;
-            btn.textContent = '手動チェック実行';
-            return;
-        }
-
-        status.textContent = 'チェック実行中... (0秒)';
-
-        // ポーリングで完了を待つ
-        const pollInterval = setInterval(async () => {
-            try {
-                const res = await fetch('/api/results/check/status');
-                const st = await res.json();
-
-                if (st.running) {
-                    status.textContent = `チェック実行中... (${st.elapsed}秒)`;
-                } else {
-                    clearInterval(pollInterval);
-                    if (st.success) {
-                        status.textContent = 'チェック完了！ページを更新します...';
-                        status.classList.add('success');
-                        setTimeout(() => location.reload(), 1500);
-                    } else {
-                        status.textContent = 'エラー: ' + (st.message || 'チェック失敗');
-                        status.classList.add('error');
-                        btn.disabled = false;
-                        btn.textContent = '手動チェック実行';
-                    }
-                }
-            } catch (e) {
-                // ポーリング失敗は無視して続行
+            if (!data.success) {
+                status.textContent = 'エラー: ' + (data.message || 'チェック開始失敗');
+                status.classList.add('error');
+                allBtns.forEach(function(b) { b.disabled = false; });
+                btn.textContent = originalText;
+                return;
             }
-        }, 3000);
 
-    } catch (error) {
-        status.textContent = 'エラー: ' + error.message;
-        status.classList.add('error');
-        btn.disabled = false;
-        btn.textContent = '手動チェック実行';
-    }
+            status.textContent = data.message + ' (0秒)';
+
+            const pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/results/check/status');
+                    const st = await res.json();
+
+                    if (st.running) {
+                        let msg = 'チェック実行中... (' + st.elapsed + '秒)';
+                        if (st.log_tail) msg += '\n' + st.log_tail;
+                        status.textContent = msg;
+                    } else {
+                        clearInterval(pollInterval);
+                        if (st.success) {
+                            status.textContent = 'チェック完了！ページを更新します...';
+                            status.classList.add('success');
+                            setTimeout(function() { location.reload(); }, 1500);
+                        } else {
+                            status.textContent = 'エラー: ' + (st.message || 'チェック失敗');
+                            status.classList.add('error');
+                            allBtns.forEach(function(b) { b.disabled = false; });
+                            btn.textContent = originalText;
+                        }
+                    }
+                } catch (e) {
+                    // ポーリング失敗は無視して続行
+                }
+            }, 3000);
+
+        } catch (error) {
+            status.textContent = 'エラー: ' + error.message;
+            status.classList.add('error');
+            allBtns.forEach(function(b) { b.disabled = false; });
+            btn.textContent = originalText;
+        }
+    });
 });
 </script>
 {% endblock %}

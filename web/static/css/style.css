@@ -96,12 +96,39 @@ h1 {
     cursor: not-allowed;
 }
 
+.btn-outline {
+    background-color: white;
+    color: #3498db;
+    border: 1px solid #3498db;
+}
+
+.btn-outline:hover {
+    background-color: #ebf5fb;
+}
+
+.btn-outline:disabled {
+    color: #95a5a6;
+    border-color: #95a5a6;
+    cursor: not-allowed;
+}
+
 /* ダッシュボード */
 .dashboard-actions {
     margin-bottom: 2rem;
     display: flex;
     align-items: center;
     gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.check-btn-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.check-btn-group .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
 }
 
 .status-message {

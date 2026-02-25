@@ -306,6 +306,10 @@ def run_check():
             'message': f'既にチェック実行中です（{elapsed}秒経過）'
         }), 409
 
+    # システムフィルタ取得
+    data = request.get_json(silent=True) or {}
+    system_filter = data.get('system')  # 'dent-sys', 'stransa', or None
+
     # ログディレクトリ確保
     log_dir = os.path.join(project_root, 'logs')
     os.makedirs(log_dir, exist_ok=True)
@@ -321,17 +325,22 @@ def run_check():
     env = os.environ.copy()
     env['PYTHONUNBUFFERED'] = '1'
 
+    cmd = [sys.executable, '-m', 'src.main']
+    if system_filter in ('dent-sys', 'stransa'):
+        cmd.extend(['--system', system_filter])
+
     _check_process = subprocess.Popen(
-        [sys.executable, '-m', 'src.main'],
+        cmd,
         stdout=_check_log_file,
         stderr=subprocess.STDOUT,
         cwd=project_root,
         env=env
     )
 
+    system_label = {'dent-sys': 'dent-sys', 'stransa': 'Stransa'}.get(system_filter, '全システム')
     return jsonify({
         'success': True,
-        'message': 'チェックを開始しました'
+        'message': f'{system_label}のチェックを開始しました'
     })
 
 

@@ -176,6 +176,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-25** システム別チェック: ダッシュボードに「全て/dent-sys/Stransa」選択ボタン追加
 - **2026-02-25** dent-sys+Stransa並列スクレイピング: asyncio.gatherで同時実行、CPU 2コア化、min-instances=1
 - **2026-02-25** PYTHONUNBUFFERED=1追加、サブプロセス5分タイムアウト、ログ末尾リアルタイム表示、GCSからstaff_rules同期コミット
 - **2026-02-25** GCS起動時同期: アプリ起動時にGCSからstaff_rules.yamlを即座にダウンロード（デプロイ時の設定消失防止）
