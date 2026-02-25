@@ -40,6 +40,7 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
     # Stransa 分院
     stransa_clinics = clinics_config.get('stransa_clinics', [])
     for clinic in stransa_clinics:
+        clinic['system'] = 'stransa'
         cred = stransa_cred_map.get(clinic.get('name'))
         if cred:
             clinic.setdefault('id', cred['id'])
