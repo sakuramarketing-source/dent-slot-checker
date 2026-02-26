@@ -1,14 +1,8 @@
-# Python 3.11 slim image
-FROM python:3.11-slim
+# Playwright公式イメージ（Chromium + 全依存ライブラリ同梱）
+FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
 
 # Set working directory
 WORKDIR /app
-
-# Install system dependencies for Playwright
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for caching
 COPY requirements.txt .
@@ -16,8 +10,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
-RUN playwright install chromium --with-deps
+# Playwright browsers are pre-installed in the base image
+# 念のためChromiumだけ再インストール（バージョン整合性）
+RUN playwright install chromium
 
 # Copy application code
 COPY . .
