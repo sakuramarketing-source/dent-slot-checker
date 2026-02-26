@@ -224,8 +224,15 @@ async def main_async(
         ))
         task_labels.append('stransa')
 
-    # 両システム同時実行
-    scrape_results_list = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+    # 両システム同時実行（5分タイムアウト）
+    try:
+        scrape_results_list = await asyncio.wait_for(
+            asyncio.gather(*scrape_tasks, return_exceptions=True),
+            timeout=300
+        )
+    except asyncio.TimeoutError:
+        logger.error("スクレイピング全体が5分でタイムアウト")
+        scrape_results_list = [TimeoutError("5分タイムアウト")] * len(scrape_tasks)
 
     for label, scrape_result in zip(task_labels, scrape_results_list):
         if isinstance(scrape_result, Exception):

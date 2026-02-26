@@ -579,23 +579,40 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(3)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+    stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
+    logger.info(f"Stransa対象分院数: {len(stransa_clinics)}")
 
-        async def scrape_with_sem(clinic):
-            async with sem:
-                logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
-                chair_slots = await scrape_stransa_clinic(browser, clinic)
-                return clinic['name'], chair_slots if chair_slots is not None else {}
+    try:
+        logger.info("Playwright起動中...")
+        async with async_playwright() as p:
+            logger.info("Chromium起動中...")
+            browser = await p.chromium.launch(headless=headless)
+            logger.info("Chromium起動完了")
 
-        stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
-        tasks = [scrape_with_sem(c) for c in stransa_clinics]
-        for name, slots in await asyncio.gather(*tasks):
-            results[name] = slots
+            async def scrape_with_sem(clinic):
+                async with sem:
+                    logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
+                    try:
+                        chair_slots = await scrape_stransa_clinic(browser, clinic)
+                        logger.info(f"Stransa スクレイピング完了: {clinic['name']}")
+                        return clinic['name'], chair_slots if chair_slots is not None else {}
+                    except Exception as e:
+                        logger.error(f"Stransa スクレイピングエラー: {clinic['name']} - {e}")
+                        return clinic['name'], {}
 
-        await browser.close()
+            tasks = [scrape_with_sem(c) for c in stransa_clinics]
+            for name, slots in await asyncio.gather(*tasks):
+                results[name] = slots
+
+            await browser.close()
+            logger.info("Chromium終了")
+
+    except Exception as e:
+        logger.error(f"Playwright/Chromium起動失敗: {e}")
+        import traceback
+        traceback.print_exc()
 
     return results
 
