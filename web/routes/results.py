@@ -23,7 +23,7 @@ bp = Blueprint('results', __name__)
 _check_process = None
 _check_log_file = None
 _check_started_at = None
-_CHECK_TIMEOUT = 300  # 5分タイムアウト
+_CHECK_TIMEOUT = 720  # 12分タイムアウト
 
 
 def load_staff_rules():

@@ -588,12 +588,9 @@ async def scrape_all_stransa_clinics(
         logger.info("Playwright起動中...")
         async with async_playwright() as p:
             logger.info("Chromium起動中...")
-            browser = await asyncio.wait_for(
-                p.chromium.launch(
-                    headless=headless,
-                    args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-                ),
-                timeout=30
+            browser = await p.chromium.launch(
+                headless=headless,
+                args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
             )
             logger.info("Chromium起動完了")
 
