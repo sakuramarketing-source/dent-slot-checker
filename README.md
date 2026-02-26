@@ -176,6 +176,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-26** Stransa空き枠修正: スタッフタブ切替を追加（デフォルトのユニット表示→スタッフ表示）、空きセル判定改善
 - **2026-02-25** システム別チェック: ダッシュボードに「全て/dent-sys/Stransa」選択ボタン追加
 - **2026-02-25** dent-sys+Stransa並列スクレイピング: asyncio.gatherで同時実行、CPU 2コア化、min-instances=1
 - **2026-02-25** PYTHONUNBUFFERED=1追加、サブプロセス5分タイムアウト、ログ末尾リアルタイム表示、GCSからstaff_rules同期コミット

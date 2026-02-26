@@ -80,6 +80,20 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 await page.wait_for_selector('table tr.caption, table thead', timeout=10000)
             except Exception:
                 await asyncio.sleep(3)
+
+            # 「スタッフ」タブに切り替え（デフォルトはユニット表示）
+            try:
+                staff_btn = page.locator('button:has-text("スタッフ"), a:has-text("スタッフ"), span:has-text("スタッフ")')
+                if await staff_btn.count() > 0:
+                    await staff_btn.first.click()
+                    await page.wait_for_load_state('networkidle')
+                    await asyncio.sleep(1.5)
+                    logger.info(f"スタッフタブに切替: {clinic['name']}")
+                else:
+                    logger.warning(f"スタッフタブが見つかりません: {clinic['name']}")
+            except Exception as e:
+                logger.warning(f"スタッフタブ切替失敗: {clinic['name']} - {e}")
+
             logger.info(f"ログイン成功: {clinic['name']}")
             return True
         else:
@@ -415,12 +429,14 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                 # セルの内容を取得
                 cell_text = (await cell.inner_text()).strip()
+                # nbsp等の不可視文字も除去
+                cell_clean = cell_text.replace('\xa0', '').replace('\u200b', '').strip()
 
                 # 空きセルの判定
                 # - テキストが空（予約が入っていない）
-                # - チェア名と同じ（ヘッダー）ではない
-                is_empty = (not cell_text or cell_text == '')
-                is_header = cell_text.startswith('チェア')
+                # - ヘッダー行ではない
+                is_empty = (not cell_clean or cell_clean == '')
+                is_header = cell_clean.startswith('チェア')
 
                 if is_empty and not is_header:
                     if chair_name not in chair_slots:
