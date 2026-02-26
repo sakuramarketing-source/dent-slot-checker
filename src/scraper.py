@@ -613,7 +613,10 @@ async def scrape_all_clinics(
     staff_by_clinic = staff_rules.get('staff_by_clinic', {})
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        )
         sem = asyncio.Semaphore(6)
 
         async def _scrape_one(clinic, disabled_staff):
@@ -690,7 +693,10 @@ async def sync_all_staff(
     results = {}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        )
 
         for clinic in clinics:
             logger.info(f"スタッフ同期中: {clinic['name']}")
