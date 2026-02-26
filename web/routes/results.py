@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 import yaml
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, send_file
 
 # プロジェクトルートをパスに追加
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -410,3 +410,55 @@ def check_status():
             'error': error_detail,
             'elapsed': elapsed,
         })
+
+
+@bp.route('/check/log', methods=['GET'])
+def check_log():
+    """チェック実行ログ全文を返す"""
+    project_root = current_app.config['PROJECT_ROOT']
+    log_path = os.path.join(project_root, 'logs', 'check_latest.log')
+
+    if not os.path.exists(log_path):
+        return 'No log file', 404, {'Content-Type': 'text/plain; charset=utf-8'}
+
+    with open(log_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+
+@bp.route('/check/screenshots', methods=['GET'])
+def check_screenshots():
+    """デバッグスクリーンショット一覧を返す"""
+    project_root = current_app.config['PROJECT_ROOT']
+    ss_dir = os.path.join(project_root, 'logs', 'screenshots')
+
+    if not os.path.isdir(ss_dir):
+        return jsonify({'screenshots': []})
+
+    files = sorted(
+        [f for f in os.listdir(ss_dir) if f.endswith('.png')],
+        key=lambda f: os.path.getmtime(os.path.join(ss_dir, f)),
+        reverse=True
+    )
+    return jsonify({
+        'screenshots': [
+            {'filename': f, 'url': f'/api/results/check/screenshots/{f}'}
+            for f in files
+        ]
+    })
+
+
+@bp.route('/check/screenshots/<filename>', methods=['GET'])
+def check_screenshot_file(filename):
+    """個別のデバッグスクリーンショットを返す"""
+    # パストラバーサル防止
+    if '/' in filename or '\\' in filename or '..' in filename:
+        return 'Invalid filename', 400
+
+    project_root = current_app.config['PROJECT_ROOT']
+    file_path = os.path.join(project_root, 'logs', 'screenshots', filename)
+
+    if not os.path.exists(file_path):
+        return 'Not found', 404
+
+    return send_file(file_path, mimetype='image/png')

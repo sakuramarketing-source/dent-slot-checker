@@ -2,11 +2,27 @@
 
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from playwright.async_api import async_playwright, Page, Browser
 
 logger = logging.getLogger(__name__)
+
+# デバッグスクリーンショット保存先
+_SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs', 'screenshots')
+
+
+async def _debug_screenshot(page: Page, clinic_name: str, step: str):
+    """デバッグ用スクリーンショットを保存"""
+    try:
+        os.makedirs(_SCREENSHOT_DIR, exist_ok=True)
+        safe_name = clinic_name.replace('/', '_').replace(' ', '_').replace('（', '').replace('）', '')[:20]
+        path = os.path.join(_SCREENSHOT_DIR, f'{safe_name}_{step}.png')
+        await page.screenshot(path=path, full_page=False)
+        logger.info(f"[DEBUG] screenshot saved: {step} - {clinic_name}")
+    except Exception as e:
+        logger.warning(f"screenshot失敗: {e}")
 
 
 async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
@@ -20,10 +36,12 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
     Returns:
         ログイン成功したかどうか
     """
+    clinic_name = clinic.get('name', '不明')
     try:
+        logger.info(f"[{clinic_name}] ログイン開始: {clinic['url']}")
         await page.goto(clinic['url'])
         await page.wait_for_load_state('networkidle')
-        await asyncio.sleep(1)  # SPA読み込み待ち
+        await asyncio.sleep(1)
 
         # メールアドレス入力
         email_input = page.locator('input[type="text"], input[type="email"]').first
@@ -40,34 +58,62 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         if await login_btn.count() > 0:
             await login_btn.click()
             await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(1.5)  # ログイン後の読み込み待ち
+            await asyncio.sleep(1.5)
 
-        # ログイン成功確認
         current_url = page.url
+        logger.info(f"[{clinic_name}] ログイン後URL: {current_url}")
+        await _debug_screenshot(page, clinic_name, '01_after_login')
 
-        # オフィス選択ページ (/office) の場合、カレンダーへ移動
+        # オフィス選択ページ (/office) の場合
         if '/office' in current_url:
-            logger.info(f"オフィス選択ページ検出: {clinic['name']}")
-            # まずオフィス名リンクをクリックして選択を試みる
-            office_link = page.locator(
-                f'a:has-text("{clinic["name"]}"), '
-                f'button:has-text("{clinic["name"]}")'
-            )
+            logger.info(f"[{clinic_name}] オフィス選択ページ検出")
+
+            # ページ上のオフィスリンクを全取得してログ
+            all_links = await page.locator('a').all()
+            office_names = []
+            for link in all_links:
+                try:
+                    text = (await link.inner_text()).strip()
+                    if text and len(text) > 1 and len(text) < 50:
+                        office_names.append(text)
+                except Exception:
+                    pass
+            logger.info(f"[{clinic_name}] オフィス一覧: {office_names}")
+
+            # 部分一致でオフィスを探す
+            found = False
+            # まず完全一致
+            office_link = page.locator(f'a:has-text("{clinic_name}")')
             if await office_link.count() > 0:
                 await office_link.first.click()
+                found = True
+                logger.info(f"[{clinic_name}] オフィス完全一致でクリック")
+            else:
+                # 部分一致: clinic_nameの主要部分で検索
+                short_name = clinic_name.split('・')[0].replace('（歯科）', '').replace('（', '').replace('）', '')
+                office_link2 = page.locator(f'a:has-text("{short_name}")')
+                if await office_link2.count() > 0:
+                    await office_link2.first.click()
+                    found = True
+                    logger.info(f"[{clinic_name}] オフィス部分一致({short_name})でクリック")
+
+            if found:
                 await page.wait_for_load_state('networkidle')
                 await asyncio.sleep(2)
             else:
-                # フォールバック: URL置換でカレンダーへ直接移動
+                logger.warning(f"[{clinic_name}] オフィスが見つからない、URL置換でカレンダーへ")
                 calendar_url = current_url.replace('/office', '/calendar/')
                 await page.goto(calendar_url)
                 await page.wait_for_load_state('networkidle')
                 await asyncio.sleep(2)
+
             current_url = page.url
+            logger.info(f"[{clinic_name}] オフィス選択後URL: {current_url}")
+            await _debug_screenshot(page, clinic_name, '02_after_office')
 
             # まだofficeページの場合はリトライ
             if '/office' in current_url:
-                logger.warning(f"オフィス選択が完了しない、URL置換でリトライ: {clinic['name']}")
+                logger.warning(f"[{clinic_name}] まだofficeページ、URL置換でリトライ")
                 calendar_url = current_url.replace('/office', '/calendar/')
                 await page.goto(calendar_url)
                 await page.wait_for_load_state('networkidle')
@@ -77,31 +123,56 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         if '/calendar/' in current_url:
             # SPAのカレンダー描画を待つ
             try:
-                await page.wait_for_selector('table tr.caption, table thead', timeout=10000)
+                await page.wait_for_selector('table', timeout=10000)
             except Exception:
                 await asyncio.sleep(3)
 
-            # 「スタッフ」タブに切り替え（デフォルトはユニット表示）
-            try:
-                staff_btn = page.locator('button:has-text("スタッフ"), a:has-text("スタッフ"), span:has-text("スタッフ")')
-                if await staff_btn.count() > 0:
-                    await staff_btn.first.click()
-                    await page.wait_for_load_state('networkidle')
-                    await asyncio.sleep(1.5)
-                    logger.info(f"スタッフタブに切替: {clinic['name']}")
-                else:
-                    logger.warning(f"スタッフタブが見つかりません: {clinic['name']}")
-            except Exception as e:
-                logger.warning(f"スタッフタブ切替失敗: {clinic['name']} - {e}")
+            await _debug_screenshot(page, clinic_name, '03_calendar_before_tab')
 
-            logger.info(f"ログイン成功: {clinic['name']}")
+            # 「スタッフ」タブに切り替え（複数セレクタパターン）
+            staff_switched = False
+            staff_selectors = [
+                'text="スタッフ"',
+                'button:has-text("スタッフ")',
+                'a:has-text("スタッフ")',
+                'span:has-text("スタッフ")',
+                'label:has-text("スタッフ")',
+                'div:has-text("スタッフ")',
+                'input[value="スタッフ"]',
+            ]
+            for sel in staff_selectors:
+                try:
+                    btn = page.locator(sel)
+                    count = await btn.count()
+                    if count > 0:
+                        # 表示されている要素のみクリック
+                        for i in range(min(count, 3)):
+                            el = btn.nth(i)
+                            if await el.is_visible():
+                                await el.click()
+                                await asyncio.sleep(2)
+                                staff_switched = True
+                                logger.info(f"[{clinic_name}] スタッフタブ切替成功: {sel}")
+                                break
+                    if staff_switched:
+                        break
+                except Exception:
+                    continue
+
+            if not staff_switched:
+                logger.warning(f"[{clinic_name}] スタッフタブが見つかりません（全セレクタ試行済み）")
+
+            await _debug_screenshot(page, clinic_name, '04_after_staff_tab')
+            logger.info(f"[{clinic_name}] ログイン成功（URL: {page.url}）")
             return True
         else:
-            logger.warning(f"ログイン後のURLが想定外: {current_url}")
-            return True  # 一応成功として扱う
+            logger.warning(f"[{clinic_name}] ログイン後のURLが想定外: {current_url}")
+            await _debug_screenshot(page, clinic_name, '99_unexpected_url')
+            return True
 
     except Exception as e:
-        logger.error(f"Stransa ログイン失敗: {clinic['name']} - {e}")
+        logger.error(f"[{clinic_name}] Stransa ログイン失敗: {e}")
+        await _debug_screenshot(page, clinic_name, '99_error')
         return False
 
 
