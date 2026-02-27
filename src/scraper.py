@@ -35,11 +35,7 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
         ログイン成功したかどうか
     """
     try:
-        await page.goto(clinic['url'], timeout=30000)
-        try:
-            await page.wait_for_load_state('networkidle', timeout=10000)
-        except Exception:
-            pass
+        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=30000)
 
         # ログインフォームの存在確認
         # dent-sys.net のログインフォームは通常 input[type="text"] と input[name="password"]
@@ -55,9 +51,12 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
             if await submit_btn.count() > 0:
                 await submit_btn.click()
                 try:
-                    await page.wait_for_load_state('networkidle', timeout=10000)
+                    await page.wait_for_selector(
+                        'input[value="翌日"], tr.d_info, iframe[src*="timetable"]',
+                        timeout=30000
+                    )
                 except Exception:
-                    pass
+                    logger.warning(f"スケジュールページの描画待ちタイムアウト: {clinic['name']}")
 
         logger.info(f"ログイン完了: {clinic['name']}")
         return True
@@ -80,10 +79,10 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         if await tomorrow_btn.count() > 0:
             await tomorrow_btn.click()
             try:
-                await page.wait_for_load_state('networkidle', timeout=10000)
+                await page.wait_for_load_state('domcontentloaded', timeout=30000)
             except Exception:
                 pass
-            await asyncio.sleep(1)  # iframe読み込み待ち
+            await asyncio.sleep(2)  # iframe非同期読み込み待ち
             logger.info("翌日に移動しました")
             return True
 
@@ -92,10 +91,10 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         if await tomorrow_link.count() > 0:
             await tomorrow_link.click()
             try:
-                await page.wait_for_load_state('networkidle', timeout=10000)
+                await page.wait_for_load_state('domcontentloaded', timeout=30000)
             except Exception:
                 pass
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)  # iframe非同期読み込み待ち
             logger.info("翌日に移動しました")
             return True
 
@@ -117,13 +116,15 @@ async def get_schedule_iframe(page: Page) -> Optional[Frame]:
     """
     try:
         # page.frames から ts_timetable_week を含むURLのフレームを探す
-        # これが実際のスケジュールテーブルを含むiframe
-        for frame in page.frames:
-            if 'ts_timetable_week' in frame.url:
-                logger.info(f"スケジュールiframeを取得しました: {frame.url}")
-                return frame
+        # iframe は非同期読み込みのため、最大15秒ポーリングで待機
+        for attempt in range(15):
+            for frame in page.frames:
+                if 'ts_timetable_week' in frame.url:
+                    logger.info(f"スケジュールiframeを取得しました: {frame.url}")
+                    return frame
+            await asyncio.sleep(1)
 
-        logger.warning("スケジュールiframeが見つかりません")
+        logger.warning("スケジュールiframeが見つかりません（15秒待機後）")
         return None
 
     except Exception as e:
@@ -151,15 +152,19 @@ async def get_column_headers_from_main_page(
     disabled_staff = disabled_staff or []
 
     try:
-        # ヘッダー行の<th>要素から先生名を取得
+        # evaluate()で全ヘッダーテキストを一括取得（API往復1回のみ）
         # 構造: <tr class="d_info"><th><a>先生名</a></th>...</tr>
         # ts_set_new(col, row) の col はスタッフ列のみの0始まりインデックス
-        # → th a で enumerate すると正しくマッチする
-        header_cells = await page.locator('tr.d_info th a').all()
+        header_data = await page.evaluate('''() => {
+            const cells = document.querySelectorAll('tr.d_info th a');
+            return Array.from(cells).map((a, idx) => ({
+                idx: idx, text: (a.textContent || '').trim()
+            }));
+        }''')
 
-        for idx, cell in enumerate(header_cells):
-            text = await cell.inner_text()
-            text = text.strip()
+        for item in header_data:
+            text = item['text']
+            idx = item['idx']
 
             if not text:
                 continue
@@ -342,23 +347,25 @@ async def parse_schedule_from_iframe(
         logger.warning("行-時刻マッピング構築失敗、線形計算にフォールバック")
 
     try:
-        # 全ての「新」リンクを取得
-        new_links = await frame.locator('a.new').all()
-        logger.info(f"「新」リンク数: {len(new_links)}")
-
-        if not new_links:
-            new_links = await frame.locator('a:has-text("新")').all()
-            logger.info(f"テキスト検索「新」リンク数: {len(new_links)}")
+        # evaluate()で全「新」リンクのhrefを一括取得（API往復1回のみ）
+        link_hrefs = await frame.evaluate('''() => {
+            let links = document.querySelectorAll('a.new');
+            if (links.length === 0) {
+                links = document.querySelectorAll('a');
+                return Array.from(links)
+                    .filter(a => (a.textContent || '').trim() === '新')
+                    .map(a => a.getAttribute('href'))
+                    .filter(h => h);
+            }
+            return Array.from(links).map(a => a.getAttribute('href')).filter(h => h);
+        }''')
+        logger.info(f"「新」リンク数: {len(link_hrefs)}")
 
         unmapped_cols = set()
         unmapped_rows = set()
 
-        for link in new_links:
+        for href in link_hrefs:
             try:
-                href = await link.get_attribute('href')
-                if not href:
-                    continue
-
                 match = re.search(r'ts_set_new\((\d+),\s*(\d+)\)', href)
                 if match:
                     col_idx = int(match.group(1))
