@@ -576,7 +576,8 @@ async def scrape_stransa_clinic(
 
 async def scrape_all_stransa_clinics(
     clinics: List[Dict[str, str]],
-    headless: bool = True
+    headless: bool = True,
+    browser=None
 ) -> Dict[str, Dict[str, List[int]]]:
     """
     全てのStransa分院をスクレイピング
@@ -584,6 +585,7 @@ async def scrape_all_stransa_clinics(
     Args:
         clinics: 分院設定リスト
         headless: ヘッドレスモードで実行するか
+        browser: 既存ブラウザ（ブラウザプールから渡された場合）
 
     Returns:
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
@@ -594,32 +596,39 @@ async def scrape_all_stransa_clinics(
     stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
     logger.info(f"Stransa対象分院数: {len(stransa_clinics)}")
 
+    own_browser = browser is None  # 自前起動かどうか
+
     try:
-        logger.info("Playwright起動中...")
-        async with async_playwright() as p:
+        if own_browser:
+            logger.info("Playwright起動中...")
+            pw = await async_playwright().start()
             logger.info("Chromium起動中...")
-            browser = await p.chromium.launch(
+            browser = await pw.chromium.launch(
                 headless=headless,
                 args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
             )
             logger.info("Chromium起動完了")
+        else:
+            logger.info("ブラウザプールのブラウザを使用")
 
-            async def scrape_with_sem(clinic):
-                async with sem:
-                    logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
-                    try:
-                        chair_slots = await scrape_stransa_clinic(browser, clinic)
-                        logger.info(f"Stransa スクレイピング完了: {clinic['name']}")
-                        return clinic['name'], chair_slots if chair_slots is not None else {}
-                    except Exception as e:
-                        logger.error(f"Stransa スクレイピングエラー: {clinic['name']} - {e}")
-                        return clinic['name'], {}
+        async def scrape_with_sem(clinic):
+            async with sem:
+                logger.info(f"Stransa スクレイピング開始: {clinic['name']}")
+                try:
+                    chair_slots = await scrape_stransa_clinic(browser, clinic)
+                    logger.info(f"Stransa スクレイピング完了: {clinic['name']}")
+                    return clinic['name'], chair_slots if chair_slots is not None else {}
+                except Exception as e:
+                    logger.error(f"Stransa スクレイピングエラー: {clinic['name']} - {e}")
+                    return clinic['name'], {}
 
-            tasks = [scrape_with_sem(c) for c in stransa_clinics]
-            for name, slots in await asyncio.gather(*tasks):
-                results[name] = slots
+        tasks = [scrape_with_sem(c) for c in stransa_clinics]
+        for name, slots in await asyncio.gather(*tasks):
+            results[name] = slots
 
+        if own_browser:
             await browser.close()
+            await pw.stop()
             logger.info("Chromium終了")
 
     except Exception as e:

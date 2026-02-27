@@ -35,8 +35,8 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
         ログイン成功したかどうか
     """
     try:
-        await page.goto(clinic['url'])
-        await page.wait_for_load_state('networkidle')
+        await page.goto(clinic['url'], wait_until='commit', timeout=60000)
+        await page.wait_for_selector('input[type="text"]', timeout=30000)
 
         # ログインフォームの存在確認
         # dent-sys.net のログインフォームは通常 input[type="text"] と input[name="password"]
@@ -51,7 +51,7 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
             submit_btn = page.locator('input[type="submit"], button[type="submit"], input[value="ログイン"]').first
             if await submit_btn.count() > 0:
                 await submit_btn.click()
-                await page.wait_for_load_state('networkidle')
+                await page.wait_for_load_state('commit')
 
         logger.info(f"ログイン完了: {clinic['name']}")
         return True
@@ -73,9 +73,9 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         tomorrow_btn = page.locator('input[value="翌日"]').first
         if await tomorrow_btn.count() > 0:
             await tomorrow_btn.click()
-            await page.wait_for_load_state('networkidle')
+            await page.wait_for_load_state('commit')
             try:
-                await page.wait_for_selector('iframe', timeout=5000)
+                await page.wait_for_selector('iframe', timeout=10000)
             except Exception:
                 await asyncio.sleep(1)
             logger.info("翌日に移動しました")
@@ -85,7 +85,7 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         tomorrow_link = page.locator('a:has-text("翌日"), a:has-text("次の日")').first
         if await tomorrow_link.count() > 0:
             await tomorrow_link.click()
-            await page.wait_for_load_state('networkidle')
+            await page.wait_for_load_state('commit')
             try:
                 await page.wait_for_selector('iframe', timeout=5000)
             except Exception:
@@ -588,7 +588,8 @@ async def scrape_all_clinics(
     exclude_patterns: List[str],
     slot_interval: int = 5,
     headless: bool = True,
-    config_path: str = None
+    config_path: str = None,
+    browser=None
 ) -> Dict[str, Dict[str, List[int]]]:
     """
     全ての分院をスクレイピング
@@ -599,6 +600,7 @@ async def scrape_all_clinics(
         slot_interval: スロット間隔（分）
         headless: ヘッドレスモードで実行するか
         config_path: 設定ファイルのパス
+        browser: 既存ブラウザ（ブラウザプールから渡された場合）
 
     Returns:
         {分院名: {先生名: [スロット時間のリスト]}} の辞書
@@ -612,37 +614,43 @@ async def scrape_all_clinics(
 
     staff_by_clinic = staff_rules.get('staff_by_clinic', {})
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
+    own_browser = browser is None  # 自前起動かどうか
+
+    if own_browser:
+        pw = await async_playwright().start()
+        browser = await pw.chromium.launch(
             headless=headless,
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
-        sem = asyncio.Semaphore(6)
 
-        async def _scrape_one(clinic, disabled_staff):
-            async with sem:
-                logger.info(f"スクレイピング開始: {clinic['name']}")
-                doctor_slots = await scrape_clinic(
-                    browser, clinic, exclude_patterns, slot_interval, disabled_staff
-                )
-                return clinic['name'], doctor_slots or {}
+    sem = asyncio.Semaphore(6)
 
-        tasks = []
-        for clinic in clinics:
-            clinic_staff_config = staff_by_clinic.get(clinic['name'], {})
-            disabled_staff = clinic_staff_config.get('disabled', [])
-            tasks.append(_scrape_one(clinic, disabled_staff))
+    async def _scrape_one(clinic, disabled_staff):
+        async with sem:
+            logger.info(f"スクレイピング開始: {clinic['name']}")
+            doctor_slots = await scrape_clinic(
+                browser, clinic, exclude_patterns, slot_interval, disabled_staff
+            )
+            return clinic['name'], doctor_slots or {}
 
-        completed = await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = []
+    for clinic in clinics:
+        clinic_staff_config = staff_by_clinic.get(clinic['name'], {})
+        disabled_staff = clinic_staff_config.get('disabled', [])
+        tasks.append(_scrape_one(clinic, disabled_staff))
 
-        for item in completed:
-            if isinstance(item, Exception):
-                logger.error(f"並列スクレイピングエラー: {item}")
-                continue
-            name, slots = item
-            results[name] = slots
+    completed = await asyncio.gather(*tasks, return_exceptions=True)
 
+    for item in completed:
+        if isinstance(item, Exception):
+            logger.error(f"並列スクレイピングエラー: {item}")
+            continue
+        name, slots = item
+        results[name] = slots
+
+    if own_browser:
         await browser.close()
+        await pw.stop()
 
     return results
 

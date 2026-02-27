@@ -3,7 +3,6 @@
 import os
 import json
 import glob
-import subprocess
 import sys
 import time
 import yaml
@@ -20,10 +19,11 @@ from src.gcs_helper import sync_output_from_gcs
 bp = Blueprint('results', __name__)
 
 # バックグラウンドチェック状態管理
-_check_process = None
-_check_log_file = None
 _check_started_at = None
-_CHECK_TIMEOUT = 720  # 12分タイムアウト
+_check_thread = None
+_check_result = None  # None=未実行, True=成功, False=失敗
+_check_error = None
+_CHECK_TIMEOUT = 300  # 5分タイムアウト
 
 
 def load_staff_rules():
@@ -294,12 +294,12 @@ def _read_log_tail(log_path, lines=10):
 
 @bp.route('/check', methods=['POST'])
 def run_check():
-    """手動でチェックを実行（Popenでバックグラウンド起動）"""
-    global _check_process, _check_log_file, _check_started_at
+    """手動でチェックを実行（ブラウザプール利用のインプロセス実行）"""
+    global _check_thread, _check_started_at, _check_result, _check_error
     project_root = current_app.config['PROJECT_ROOT']
 
     # 既に実行中なら拒否
-    if _check_process and _check_process.poll() is None:
+    if _check_thread and _check_thread.is_alive():
         elapsed = int(time.time() - (_check_started_at or time.time()))
         return jsonify({
             'success': False,
@@ -310,32 +310,141 @@ def run_check():
     data = request.get_json(silent=True) or {}
     system_filter = data.get('system')  # 'dent-sys', 'stransa', or None
 
-    # ログディレクトリ確保
+    # ログセットアップ
     log_dir = os.path.join(project_root, 'logs')
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, 'check_latest.log')
 
-    # 前回のログファイルハンドルを閉じる
-    if _check_log_file and not _check_log_file.closed:
-        _check_log_file.close()
-
-    _check_log_file = open(log_path, 'w', encoding='utf-8', buffering=1)
     _check_started_at = time.time()
+    _check_result = None
+    _check_error = None
 
-    env = os.environ.copy()
-    env['PYTHONUNBUFFERED'] = '1'
+    # 設定読み込みに必要な情報をキャプチャ
+    config_path = current_app.config['CONFIG_PATH']
+    output_path = current_app.config['OUTPUT_PATH']
 
-    cmd = [sys.executable, '-m', 'src.main']
-    if system_filter in ('dent-sys', 'stransa'):
-        cmd.extend(['--system', system_filter])
+    def _run_check_thread():
+        global _check_result, _check_error, _output_synced
+        import logging
 
-    _check_process = subprocess.Popen(
-        cmd,
-        stdout=_check_log_file,
-        stderr=subprocess.STDOUT,
-        cwd=project_root,
-        env=env
-    )
+        # ファイルハンドラでログを check_latest.log に出力
+        file_handler = logging.FileHandler(log_path, mode='w', encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        root_logger = logging.getLogger()
+        root_logger.addHandler(file_handler)
+        root_logger.setLevel(logging.INFO)
+
+        try:
+            from src.browser_pool import get_browser, run_async
+            from src.config_loader import load_config, get_exclude_patterns, get_slot_settings
+            from src.main import analyze_results
+            from src.output_writer import save_results
+            from pathlib import Path
+            from datetime import datetime, timedelta
+
+            logger_t = logging.getLogger('check_thread')
+            logger_t.info("インプロセスチェック開始")
+
+            browser = get_browser()
+            logger_t.info(f"ブラウザ取得完了: {browser}")
+
+            config = load_config(Path(config_path))
+            exclude_patterns = config['settings'].get('exclude_patterns', ['訪問'])
+            slot_settings = {
+                'consecutive_slots_required': config['settings'].get('consecutive_slots_required', 6),
+                'minimum_blocks_required': config['settings'].get('minimum_blocks_required', 4),
+                'slot_interval_minutes': config['settings'].get('slot_interval_minutes', 5),
+            }
+
+            # staff_rules
+            import yaml
+            sr_path = Path(config_path) / 'staff_rules.yaml'
+            staff_by_clinic = {}
+            if sr_path.exists():
+                with open(sr_path, 'r', encoding='utf-8') as f:
+                    sr_data = yaml.safe_load(f) or {}
+                staff_by_clinic = sr_data.get('staff_by_clinic', {})
+
+            dent_sys_clinics = [c for c in config.get('dent_sys_clinics', []) if c.get('enabled', True)]
+            stransa_clinics = [c for c in config.get('stransa_clinics', []) if c.get('enabled', True)]
+
+            if system_filter == 'dent-sys':
+                stransa_clinics = []
+            elif system_filter == 'stransa':
+                dent_sys_clinics = []
+
+            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院")
+
+            all_results = []
+            total_clinics = 0
+            clinics_with_availability = 0
+
+            # Stransa スクレイピング（ブラウザプール利用）
+            if stransa_clinics:
+                logger_t.info("=== Stransa スクレイピング（ブラウザプール） ===")
+                from src.scraper_stransa import scrape_all_stransa_clinics
+                stransa_result = run_async(
+                    scrape_all_stransa_clinics(stransa_clinics, browser=browser)
+                )
+                analysis = analyze_results(stransa_result, slot_settings, 'stransa', staff_by_clinic)
+                all_results.extend(analysis['results'])
+                total_clinics += analysis['summary']['total_clinics']
+                clinics_with_availability += analysis['summary']['clinics_with_availability']
+                logger_t.info(f"Stransa完了: {analysis['summary']}")
+
+            # dent-sys スクレイピング（ブラウザプール利用）
+            if dent_sys_clinics:
+                logger_t.info("=== dent-sys スクレイピング（ブラウザプール） ===")
+                from src.scraper import scrape_all_clinics
+                dent_result = run_async(
+                    scrape_all_clinics(
+                        dent_sys_clinics, exclude_patterns,
+                        slot_settings['slot_interval_minutes'],
+                        True, str(config_path), browser=browser
+                    )
+                )
+                analysis = analyze_results(dent_result, slot_settings, 'dent-sys', staff_by_clinic)
+                all_results.extend(analysis['results'])
+                total_clinics += analysis['summary']['total_clinics']
+                clinics_with_availability += analysis['summary']['clinics_with_availability']
+                logger_t.info(f"dent-sys完了: {analysis['summary']}")
+
+            # 統合結果
+            check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+            combined = {
+                'check_date': check_date,
+                'checked_at': datetime.now().isoformat(),
+                'results': all_results,
+                'summary': {
+                    'total_clinics': total_clinics,
+                    'clinics_with_availability': clinics_with_availability
+                }
+            }
+
+            output_dir = Path(output_path)
+            saved = save_results(combined, output_dir, ['json', 'csv'])
+            for f in saved:
+                logger_t.info(f"結果保存: {f}")
+
+            _check_result = True
+            _output_synced = False
+            logger_t.info("チェック完了")
+
+        except Exception as e:
+            _check_result = False
+            _check_error = str(e)
+            logging.getLogger('check_thread').error(f"チェック失敗: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            root_logger.removeHandler(file_handler)
+            file_handler.close()
+
+    import threading
+    _check_thread = threading.Thread(target=_run_check_thread, daemon=True)
+    _check_thread.start()
 
     system_label = {'dent-sys': 'dent-sys', 'stransa': 'Stransa'}.get(system_filter, '全システム')
     return jsonify({
@@ -347,11 +456,11 @@ def run_check():
 @bp.route('/check/status', methods=['GET'])
 def check_status():
     """チェック実行状態を取得"""
-    global _check_process, _check_log_file
+    global _check_thread
     project_root = current_app.config['PROJECT_ROOT']
     log_path = os.path.join(project_root, 'logs', 'check_latest.log')
 
-    if _check_process is None:
+    if _check_thread is None:
         return jsonify({
             'running': False,
             'success': None,
@@ -359,15 +468,11 @@ def check_status():
             'elapsed': 0,
         })
 
-    ret = _check_process.poll()
     elapsed = int(time.time() - (_check_started_at or time.time()))
 
-    if ret is None:
+    if _check_thread.is_alive():
         # タイムアウトチェック
         if elapsed > _CHECK_TIMEOUT:
-            _check_process.kill()
-            if _check_log_file and not _check_log_file.closed:
-                _check_log_file.close()
             log_tail = _read_log_tail(log_path, 10)
             return jsonify({
                 'running': False,
@@ -386,15 +491,11 @@ def check_status():
             'log_tail': log_tail,
         })
 
-    # 完了 — ログファイルを閉じる
-    if _check_log_file and not _check_log_file.closed:
-        _check_log_file.close()
-
-    # GCSからの新しいoutputを次回読み込みで取得するためフラグリセット
+    # 完了
     global _output_synced
     _output_synced = False
 
-    if ret == 0:
+    if _check_result:
         return jsonify({
             'running': False,
             'success': True,
@@ -402,11 +503,11 @@ def check_status():
             'elapsed': elapsed,
         })
     else:
-        error_detail = _read_log_tail(log_path, 15)
+        error_detail = _check_error or _read_log_tail(log_path, 15)
         return jsonify({
             'running': False,
             'success': False,
-            'message': f'チェック失敗 (exit code {ret})',
+            'message': 'チェック失敗',
             'error': error_detail,
             'elapsed': elapsed,
         })

@@ -65,6 +65,11 @@ def create_app():
     # Cloud Run起動時にGCSから最新のstaff_rules.yamlをダウンロード
     _sync_gcs_on_startup(app.config['CONFIG_PATH'])
 
+    # Playwright/Chromiumブラウザをバックグラウンドで事前起動
+    import threading as _th
+    from src.browser_pool import init_browser
+    _th.Thread(target=init_browser, daemon=True).start()
+
     # Blueprintを登録
     app.register_blueprint(main.bp)
     app.register_blueprint(staff.bp, url_prefix='/api/staff')
