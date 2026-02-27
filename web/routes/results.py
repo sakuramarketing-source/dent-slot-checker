@@ -374,8 +374,14 @@ def run_check():
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         ))
+        # stderr にも出力（Cloud Logging用）
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
         root_logger = logging.getLogger()
         root_logger.addHandler(file_handler)
+        root_logger.addHandler(stream_handler)
         root_logger.setLevel(logging.INFO)
 
         try:
@@ -424,32 +430,38 @@ def run_check():
             total_clinics = 0
             clinics_with_availability = 0
 
-            # dent-sys + Stransa を並列実行（ブラウザプール利用）
+            # dent-sys + Stransa を逐次実行（ブラウザリソース競合回避）
+            # 1台のChromiumで同時に多ページ開くとタイムアウト頻発のため逐次化
             async def _scrape_all():
                 from src.scraper_stransa import scrape_all_stransa_clinics
                 from src.scraper import scrape_all_clinics
-                tasks = []
-                labels = []
+                results = []
 
                 if stransa_clinics:
                     logger_t.info("=== Stransa スクレイピング開始 ===")
-                    tasks.append(scrape_all_stransa_clinics(stransa_clinics, browser=browser))
-                    labels.append('stransa')
+                    try:
+                        r = await scrape_all_stransa_clinics(stransa_clinics, browser=browser)
+                        results.append(('stransa', r))
+                        logger_t.info(f"=== Stransa 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('stransa', e))
+                        logger_t.error(f"Stransa失敗: {e}")
 
                 if dent_sys_clinics:
                     logger_t.info("=== dent-sys スクレイピング開始 ===")
-                    tasks.append(scrape_all_clinics(
-                        dent_sys_clinics, exclude_patterns,
-                        slot_settings['slot_interval_minutes'],
-                        True, str(config_path), browser=browser
-                    ))
-                    labels.append('dent-sys')
+                    try:
+                        r = await scrape_all_clinics(
+                            dent_sys_clinics, exclude_patterns,
+                            slot_settings['slot_interval_minutes'],
+                            True, str(config_path), browser=browser
+                        )
+                        results.append(('dent-sys', r))
+                        logger_t.info(f"=== dent-sys 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('dent-sys', e))
+                        logger_t.error(f"dent-sys失敗: {e}")
 
-                if not tasks:
-                    return []
-
-                results = await _asyncio.gather(*tasks, return_exceptions=True)
-                return list(zip(labels, results))
+                return results
 
             scrape_results = run_async(_scrape_all())
 
@@ -507,6 +519,7 @@ def run_check():
             traceback.print_exc()
         finally:
             root_logger.removeHandler(file_handler)
+            root_logger.removeHandler(stream_handler)
             file_handler.close()
 
     import threading
