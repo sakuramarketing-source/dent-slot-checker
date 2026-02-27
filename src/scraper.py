@@ -51,7 +51,12 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
             submit_btn = page.locator('input[type="submit"], button[type="submit"], input[value="ログイン"]').first
             if await submit_btn.count() > 0:
                 await submit_btn.click()
-                await page.wait_for_load_state('commit')
+                await page.wait_for_load_state('domcontentloaded')
+                # ログイン後のページ描画を待つ（翌日ボタンまたはiframe出現）
+                try:
+                    await page.wait_for_selector('input[value="翌日"], iframe', timeout=15000)
+                except Exception:
+                    await asyncio.sleep(3)
 
         logger.info(f"ログイン完了: {clinic['name']}")
         return True
@@ -69,6 +74,12 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         移動成功したかどうか
     """
     try:
+        # 「翌日」ボタンの出現を待つ
+        try:
+            await page.wait_for_selector('input[value="翌日"]', timeout=15000)
+        except Exception:
+            pass
+
         # 「翌日」ボタンをクリック（input[value="翌日"]）
         tomorrow_btn = page.locator('input[value="翌日"]').first
         if await tomorrow_btn.count() > 0:

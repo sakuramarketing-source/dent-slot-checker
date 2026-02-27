@@ -84,6 +84,13 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         if '/office' in current_url:
             logger.info(f"[{clinic_name}] オフィス選択ページ検出")
 
+            # ページ描画を待つ（リンクが出現するまで）
+            try:
+                await page.wait_for_load_state('domcontentloaded', timeout=10000)
+                await page.wait_for_selector('a', timeout=10000)
+            except Exception:
+                await asyncio.sleep(2)
+
             # ページ上のオフィスリンクを全取得してログ（失敗しても続行）
             office_names = []
             try:

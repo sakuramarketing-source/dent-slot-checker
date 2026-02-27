@@ -63,9 +63,10 @@ def apply_web_booking_filter(data, staff_rules, settings=None):
         web_booking = clinic_config.get('web_booking', [])
 
         if not web_booking:
-            # web_booking未設定 → フィルタなし
-            if result.get('result', False):
-                clinics_with_availability += 1
+            # web_booking未設定 → 結果をクリア（WEBタグ未設定 = 集計対象外）
+            result['details'] = []
+            result['total_30min_blocks'] = 0
+            result['result'] = False
             continue
 
         has_filter = True
