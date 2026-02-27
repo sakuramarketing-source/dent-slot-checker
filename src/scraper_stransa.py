@@ -90,7 +90,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 all_links = await page.locator('a').all()
                 for link in all_links:
                     try:
-                        text = (await link.inner_text()).strip()
+                        text = (await link.text_content() or '').strip()
                         if text and len(text) > 1 and len(text) < 50:
                             office_names.append(text)
                     except Exception:
@@ -101,11 +101,13 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
 
             # オフィス選択（リトライ付き）
             found = False
-            short_name = clinic_name.split('・')[0].replace('（歯科）', '').replace('（', '').replace('）', '')
+            office_display_name = clinic.get('office_name', clinic_name)
+            short_name = office_display_name.split('・')[0].replace('（歯科）', '').replace('（', '').replace('）', '')
+            logger.info(f"[{clinic_name}] オフィス検索名: full='{office_display_name}', short='{short_name}'")
             for attempt in range(2):
                 try:
                     # 完全一致
-                    office_link = page.locator(f'a:has-text("{clinic_name}")')
+                    office_link = page.locator(f'a:has-text("{office_display_name}")')
                     if await office_link.count() > 0:
                         await office_link.first.click()
                         found = True
@@ -135,7 +137,8 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                     pass
                 await asyncio.sleep(1.5)
             else:
-                logger.warning(f"[{clinic_name}] オフィスが見つからない、URL置換でカレンダーへ")
+                logger.warning(f"[{clinic_name}] オフィスが見つからない（検索: '{office_display_name}' / '{short_name}'）、URL置換でカレンダーへ")
+                logger.warning(f"[{clinic_name}] ※ clinics.yaml に office_name を設定すると改善できます")
                 calendar_url = current_url.replace('/office', '/calendar/')
                 await page.goto(calendar_url, wait_until='commit', timeout=60000)
                 await asyncio.sleep(3)
@@ -278,7 +281,7 @@ async def navigate_to_tomorrow_stransa(page: Page) -> bool:
                 all_links = await page.locator('a').all()
                 for link in all_links:
                     try:
-                        text = (await link.inner_text()).strip()
+                        text = (await link.text_content() or '').strip()
                         # 「›」のみ（「»」や「››」を除外）
                         if text in next_day_chars:
                             await link.click()
@@ -335,7 +338,7 @@ async def get_stransa_chairs(page: Page) -> Dict[int, str]:
             found_column = False
 
             for i, cell in enumerate(cells):
-                text = (await cell.inner_text()).strip()
+                text = (await cell.text_content() or '').strip()
                 # チェアまたはスタッフ名を検出
                 if is_staff_column(text):
                     chairs[i] = text
@@ -464,6 +467,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
     空きスロットを取得
 
     Stransa は15分刻みなので、30分空き = 2連続スロット
+    evaluate() で全テーブルデータを一括取得し、Python側で処理する。
 
     Returns:
         {チェア名/スタッフ名: [空きスロット時間（分）のリスト]} の辞書
@@ -471,123 +475,130 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
     chair_slots: Dict[str, List[int]] = {}
 
     try:
-        # スケジュールテーブルを特定（チェアまたはスタッフ名を含むテーブル）
-        tables = await page.locator('table').all()
-        schedule_table = None
+        # ページ安定化
+        try:
+            await page.wait_for_load_state('domcontentloaded', timeout=10000)
+        except Exception:
+            pass
+
+        # 全テーブルのデータをJS側で一括抽出（Playwright API往復を最小化）
+        all_tables_data = await page.evaluate('''() => {
+            const tables = document.querySelectorAll('table');
+            return Array.from(tables).map(table => {
+                const rows = table.querySelectorAll('tr');
+                return {
+                    rowCount: rows.length,
+                    rows: Array.from(rows).map(row => {
+                        const cells = row.querySelectorAll('td, th');
+                        return Array.from(cells).map(cell => ({
+                            text: (cell.textContent || '').trim(),
+                            className: cell.className || '',
+                            style: cell.getAttribute('style') || '',
+                            colspan: cell.getAttribute('colspan') || '',
+                            rowspan: cell.getAttribute('rowspan') || '',
+                        }));
+                    })
+                };
+            });
+        }''')
+
+        # スケジュールテーブルを特定
+        schedule_data = None
         chairs = {}
 
-        for table in tables:
-            rows = await table.locator('tr').all()
-            if len(rows) < 10:  # スケジュールテーブルは行数が多い
+        for table_data in all_tables_data:
+            if table_data['rowCount'] < 10:
                 continue
 
-            first_row = rows[0] if rows else None
-            if not first_row:
-                continue
-
-            cells = await first_row.locator('td, th').all()
-            for i, cell in enumerate(cells):
-                text = (await cell.inner_text()).strip()
-                # チェアまたはスタッフ名を検出
+            first_row = table_data['rows'][0] if table_data['rows'] else []
+            for i, cell_data in enumerate(first_row):
+                text = cell_data['text'].strip()
                 if is_staff_column(text):
                     chairs[i] = text
 
             if chairs:
-                schedule_table = table
-                logger.info(f"スケジュールテーブル発見: {len(chairs)}カラム, {len(rows)}行")
+                schedule_data = table_data
+                logger.info(f"スケジュールテーブル発見: {len(chairs)}カラム, {table_data['rowCount']}行")
+                logger.info(f"  カラム名: {list(chairs.values())}")
                 break
 
-        if not schedule_table or not chairs:
+        if not schedule_data or not chairs:
             logger.warning("スケジュールテーブルまたはスタッフカラムが見つかりません")
             return {}
 
-        # 時間行を処理
-        rows = await schedule_table.locator('tr').all()
+        # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
+        blocked_indicators = ['closed', 'blocked', 'disabled', 'holiday', 'off',
+                              'gray', 'lunch', 'break', 'reserve', 'past',
+                              'empty', 'none', 'unavailable', 'inactive']
+        diag_count = {}  # 診断ログ用カウンタ
 
-        for row in rows:
-            cells = await row.locator('td, th').all()
-            if len(cells) < 2:
+        for row_data in schedule_data['rows']:
+            if not row_data or len(row_data) < 2:
                 continue
 
             # 最初のセルから時間を取得
-            first_cell_text = (await cells[0].inner_text()).strip()
-
-            # 時間形式（H:MM または HH:MM）かチェック
-            if ':' not in first_cell_text:
+            first_text = row_data[0]['text'].split('\n')[0].strip()
+            if ':' not in first_text:
                 continue
 
-            # 改行がある場合は最初の行だけ使用
-            first_cell_text = first_cell_text.split('\n')[0].strip()
-
             try:
-                parts = first_cell_text.split(':')
+                parts = first_text.split(':')
                 hours = int(parts[0])
-                mins = int(parts[1][:2])  # 秒がある場合に対応
+                mins = int(parts[1][:2])
                 time_minutes = hours * 60 + mins
             except (ValueError, IndexError):
                 continue
 
-            # 各チェア列をチェック
             time_str = f"{hours}:{mins:02d}"
+
+            # 各チェア列をチェック
             for col_idx, chair_name in chairs.items():
-                if col_idx >= len(cells):
+                if col_idx >= len(row_data):
                     continue
 
-                cell = cells[col_idx]
+                try:
+                    cell_data = row_data[col_idx]
 
-                # セルの内容を取得（テキスト・HTML・属性）
-                cell_text = (await cell.inner_text()).strip()
-                cell_clean = cell_text.replace('\xa0', '').replace('\u200b', '').strip()
-
-                # テキストがあれば予約済み → スキップ
-                if cell_clean:
-                    continue
-
-                # ヘッダー行スキップ
-                if cell_clean.startswith('チェア'):
-                    continue
-
-                # colspan/rowspan チェック（結合セル = 休憩/閉鎖）
-                colspan = await cell.get_attribute('colspan')
-                if colspan and colspan != '1':
-                    continue
-                rowspan = await cell.get_attribute('rowspan')
-                if rowspan and rowspan != '1':
-                    continue
-
-                # CSSクラスでブロック判定
-                cell_class = (await cell.get_attribute('class')) or ''
-                blocked_indicators = ['closed', 'blocked', 'disabled', 'holiday', 'off',
-                                      'gray', 'lunch', 'break', 'reserve', 'past',
-                                      'empty', 'none', 'unavailable', 'inactive']
-                if any(ind in cell_class.lower() for ind in blocked_indicators):
-                    continue
-
-                # style属性でブロック判定（背景色付き = ブロック）
-                cell_style = (await cell.get_attribute('style')) or ''
-                if cell_style:
-                    style_lower = cell_style.lower()
-                    # background-color が設定されていて白/透明でなければブロック
-                    if 'background' in style_lower:
-                        if not any(w in style_lower for w in ['#fff', 'white', 'transparent', 'rgb(255']):
-                            continue
-                    # display:none のセルはスキップ
-                    if 'display' in style_lower and 'none' in style_lower:
+                    # テキスト判定
+                    cell_text = cell_data['text']
+                    cell_clean = cell_text.replace('\xa0', '').replace('\u200b', '').strip()
+                    if cell_clean:
                         continue
 
-                # 全チェックをパス → 空き枠
-                if chair_name not in chair_slots:
-                    chair_slots[chair_name] = []
-                chair_slots[chair_name].append(time_minutes)
+                    # colspan/rowspan チェック（結合セル = 休憩/閉鎖）
+                    if cell_data['colspan'] and cell_data['colspan'] != '1':
+                        continue
+                    if cell_data['rowspan'] and cell_data['rowspan'] != '1':
+                        continue
 
-                # 診断ログ: 最初の空きセルのouterHTMLを出力
-                if len(chair_slots[chair_name]) <= 5:
-                    try:
-                        cell_outer = await cell.evaluate('el => el.outerHTML.substring(0, 250)')
-                        logger.info(f"  [DIAG] [{chair_name}] {time_str}: {cell_outer}")
-                    except Exception:
-                        cell_html = await cell.inner_html()
-                        logger.info(f"  [DIAG] [{chair_name}] {time_str}: class='{cell_class}' html='{cell_html[:100]}'")
+                    # CSSクラスでブロック判定
+                    cell_class = cell_data['className'].lower()
+                    if any(ind in cell_class for ind in blocked_indicators):
+                        continue
+
+                    # style属性でブロック判定
+                    cell_style = cell_data['style']
+                    if cell_style:
+                        style_lower = cell_style.lower()
+                        if 'background' in style_lower:
+                            if not any(w in style_lower for w in ['#fff', 'white', 'transparent', 'rgb(255']):
+                                continue
+                        if 'display' in style_lower and 'none' in style_lower:
+                            continue
+
+                    # 全チェックをパス → 空き枠
+                    if chair_name not in chair_slots:
+                        chair_slots[chair_name] = []
+                    chair_slots[chair_name].append(time_minutes)
+
+                    # 診断ログ: 最初の5セル/チェア
+                    cnt = diag_count.get(chair_name, 0)
+                    if cnt < 5:
+                        logger.info(f"  [DIAG] [{chair_name}] {time_str}: class='{cell_data['className']}' style='{cell_style[:80]}'")
+                        diag_count[chair_name] = cnt + 1
+
+                except Exception:
+                    continue
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
@@ -659,7 +670,7 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
-    sem = asyncio.Semaphore(7)  # 全医院同時実行
+    sem = asyncio.Semaphore(4)  # 4並列（Cloud Run 4CPU/2Giで安定動作）
 
     stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
     logger.info(f"Stransa対象分院数: {len(stransa_clinics)}")
