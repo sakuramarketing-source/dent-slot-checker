@@ -17,6 +17,11 @@
 {% if result %}
 <div class="result-summary">
     <h2>最新チェック結果
+        <span class="system-filter" id="systemFilter">
+            <button class="system-filter-btn active" data-system="all">全て</button>
+            <button class="system-filter-btn" data-system="dent-sys">dent-sys</button>
+            <button class="system-filter-btn" data-system="stransa">Stransa</button>
+        </span>
         <span class="category-filter" id="categoryFilter">
             <button class="category-filter-btn active" data-filter="all">全て</button>
             <button class="category-filter-btn" data-filter="doctor">Dr</button>
@@ -101,11 +106,25 @@
     const clinicData = {{ result.results | tojson if result else '[]' }};
     const minBlocks = {{ min_blocks | default(4) }};
     let currentFilter = 'all';
+    let currentSystem = 'all';
 
     // 初期タイムライン描画
     renderTimelines(clinicData, 'all');
 
-    // フィルタボタンのクリックイベント
+    // システムフィルタボタン
+    const systemFilterEl = document.getElementById('systemFilter');
+    if (systemFilterEl) {
+        systemFilterEl.addEventListener('click', function(e) {
+            const btn = e.target.closest('.system-filter-btn');
+            if (!btn) return;
+            this.querySelectorAll('.system-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            currentSystem = btn.dataset.system;
+            applyFilter(currentFilter);
+        });
+    }
+
+    // カテゴリフィルタボタン
     const filterEl = document.getElementById('categoryFilter');
     if (filterEl) {
         filterEl.addEventListener('click', function(e) {
@@ -134,10 +153,18 @@
     function applyFilter(filter) {
         const cards = document.querySelectorAll('.clinic-card');
         let clinicsWithAvailability = 0;
+        let visibleClinics = 0;
 
         cards.forEach(function(card, ci) {
             const clinic = clinicData[ci];
             if (!clinic) return;
+
+            // システムフィルタ
+            var systemMatch = (currentSystem === 'all') || (clinic.system === currentSystem);
+            if (!systemMatch) {
+                card.style.display = 'none';
+                return;
+            }
 
             // スタッフ詳細のshow/hide
             const staffItems = card.querySelectorAll('.staff-detail-item');
@@ -180,6 +207,7 @@
                 card.style.display = 'none';
             } else {
                 card.style.display = '';
+                visibleClinics++;
                 // ステータスバッジを更新
                 card.className = 'clinic-card ' + (isAvailable ? 'has-availability' : 'no-availability');
                 var badge = card.querySelector('.status-badge');
@@ -196,6 +224,9 @@
 
         // サマリー統計を更新
         var statValues = document.querySelectorAll('.stat-value');
+        if (statValues.length >= 1) {
+            statValues[0].textContent = visibleClinics;
+        }
         if (statValues.length >= 2) {
             statValues[1].textContent = clinicsWithAvailability;
         }

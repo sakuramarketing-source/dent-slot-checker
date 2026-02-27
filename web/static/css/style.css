@@ -911,6 +911,40 @@ h1 {
 }
 
 /* Dr/DH フィルタトグル */
+.system-filter {
+    display: inline-flex;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-left: 1rem;
+    vertical-align: middle;
+}
+
+.system-filter-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    background: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #7f8c8d;
+    transition: all 0.2s;
+    border-right: 1px solid #bdc3c7;
+}
+
+.system-filter-btn:last-child {
+    border-right: none;
+}
+
+.system-filter-btn:hover {
+    background: #f8f9fa;
+}
+
+.system-filter-btn.active {
+    background: #635BFF;
+    color: white;
+}
+
 .category-filter {
     display: inline-flex;
     border: 1px solid #bdc3c7;

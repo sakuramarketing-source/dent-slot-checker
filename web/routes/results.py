@@ -23,7 +23,7 @@ _check_started_at = None
 _check_thread = None
 _check_result = None  # None=未実行, True=成功, False=失敗
 _check_error = None
-_CHECK_TIMEOUT = 300  # 5分タイムアウト
+_CHECK_TIMEOUT = 600  # 10分タイムアウト
 
 
 def load_staff_rules():
@@ -109,6 +109,38 @@ def _recalculate_detail(detail, threshold):
 
 
 _output_synced = False
+
+
+def _merge_with_latest(new_results, checked_system, output_path_str, check_date):
+    """部分チェック時に他システムの結果を最新ファイルからマージ"""
+    import glob as _glob
+
+    date_str = check_date.replace('-', '')
+    pattern = os.path.join(output_path_str, f'slot_check_{date_str}_*.json')
+    files = _glob.glob(pattern)
+
+    if not files:
+        return None
+
+    latest = max(files, key=os.path.getmtime)
+    try:
+        with open(latest, 'r', encoding='utf-8') as f:
+            prev_data = json.load(f)
+    except Exception:
+        return None
+
+    # 他システムの結果を保持
+    other_system = [
+        r for r in prev_data.get('results', [])
+        if r.get('system') != checked_system
+    ]
+
+    if not other_system:
+        return None
+
+    # 新しい結果 + 他システムの結果をマージ
+    merged_results = new_results + other_system
+    return {'results': merged_results}
 
 
 def get_result_files():
@@ -347,12 +379,13 @@ def run_check():
         root_logger.setLevel(logging.INFO)
 
         try:
+            import asyncio as _asyncio
             from src.browser_pool import get_browser, run_async
             from src.config_loader import load_config, get_exclude_patterns, get_slot_settings
             from src.main import analyze_results
             from src.output_writer import save_results
             from pathlib import Path
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
 
             logger_t = logging.getLogger('check_thread')
             logger_t.info("インプロセスチェック開始")
@@ -391,40 +424,62 @@ def run_check():
             total_clinics = 0
             clinics_with_availability = 0
 
-            # Stransa スクレイピング（ブラウザプール利用）
-            if stransa_clinics:
-                logger_t.info("=== Stransa スクレイピング（ブラウザプール） ===")
+            # dent-sys + Stransa を並列実行（ブラウザプール利用）
+            async def _scrape_all():
                 from src.scraper_stransa import scrape_all_stransa_clinics
-                stransa_result = run_async(
-                    scrape_all_stransa_clinics(stransa_clinics, browser=browser)
-                )
-                analysis = analyze_results(stransa_result, slot_settings, 'stransa', staff_by_clinic)
-                all_results.extend(analysis['results'])
-                total_clinics += analysis['summary']['total_clinics']
-                clinics_with_availability += analysis['summary']['clinics_with_availability']
-                logger_t.info(f"Stransa完了: {analysis['summary']}")
-
-            # dent-sys スクレイピング（ブラウザプール利用）
-            if dent_sys_clinics:
-                logger_t.info("=== dent-sys スクレイピング（ブラウザプール） ===")
                 from src.scraper import scrape_all_clinics
-                dent_result = run_async(
-                    scrape_all_clinics(
+                tasks = []
+                labels = []
+
+                if stransa_clinics:
+                    logger_t.info("=== Stransa スクレイピング開始 ===")
+                    tasks.append(scrape_all_stransa_clinics(stransa_clinics, browser=browser))
+                    labels.append('stransa')
+
+                if dent_sys_clinics:
+                    logger_t.info("=== dent-sys スクレイピング開始 ===")
+                    tasks.append(scrape_all_clinics(
                         dent_sys_clinics, exclude_patterns,
                         slot_settings['slot_interval_minutes'],
                         True, str(config_path), browser=browser
-                    )
-                )
-                analysis = analyze_results(dent_result, slot_settings, 'dent-sys', staff_by_clinic)
+                    ))
+                    labels.append('dent-sys')
+
+                if not tasks:
+                    return []
+
+                results = await _asyncio.gather(*tasks, return_exceptions=True)
+                return list(zip(labels, results))
+
+            scrape_results = run_async(_scrape_all())
+
+            for label, result in scrape_results:
+                if isinstance(result, Exception):
+                    logger_t.error(f"{label} スクレイピング失敗: {result}")
+                    continue
+                analysis = analyze_results(result, slot_settings, label, staff_by_clinic)
                 all_results.extend(analysis['results'])
                 total_clinics += analysis['summary']['total_clinics']
                 clinics_with_availability += analysis['summary']['clinics_with_availability']
-                logger_t.info(f"dent-sys完了: {analysis['summary']}")
+                logger_t.info(f"{label}完了: {analysis['summary']}")
 
-            # 統合結果
-            from datetime import timezone
+            # 部分チェックの場合、他システムの結果をマージ
             JST = timezone(timedelta(hours=9))
             check_date = (datetime.now(JST) + timedelta(days=1)).strftime('%Y-%m-%d')
+
+            if system_filter and all_results:
+                merged = _merge_with_latest(
+                    all_results, system_filter, output_path, check_date
+                )
+                if merged:
+                    all_results = merged['results']
+                    total_clinics = len(all_results)
+                    clinics_with_availability = sum(
+                        1 for r in all_results if r.get('result', False)
+                    )
+                    logger_t.info(f"既存結果とマージ完了: {total_clinics}分院")
+
+            # 統合結果
             combined = {
                 'check_date': check_date,
                 'checked_at': datetime.now(JST).isoformat(),

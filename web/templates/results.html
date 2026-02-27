@@ -11,6 +11,11 @@
     <select id="dateSelect">
         <option value="">読み込み中...</option>
     </select>
+    <span class="system-filter" id="systemFilter">
+        <button class="system-filter-btn active" data-system="all">全て</button>
+        <button class="system-filter-btn" data-system="dent-sys">dent-sys</button>
+        <button class="system-filter-btn" data-system="stransa">Stransa</button>
+    </span>
     <span class="category-filter" id="categoryFilter">
         <button class="category-filter-btn active" data-filter="all">全て</button>
         <button class="category-filter-btn" data-filter="doctor">Dr</button>
@@ -29,8 +34,21 @@
 <script>
 let currentResultData = null;
 let currentCategoryFilter = 'all';
+let currentSystemFilter = 'all';
 
-// フィルタボタンのクリックイベント
+// システムフィルタボタン
+document.getElementById('systemFilter').addEventListener('click', function(e) {
+    const btn = e.target.closest('.system-filter-btn');
+    if (!btn) return;
+    this.querySelectorAll('.system-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentSystemFilter = btn.dataset.system;
+    if (currentResultData) {
+        renderResult(currentResultData, currentCategoryFilter);
+    }
+});
+
+// カテゴリフィルタボタン
 document.getElementById('categoryFilter').addEventListener('click', function(e) {
     const btn = e.target.closest('.category-filter-btn');
     if (!btn) return;
@@ -104,6 +122,9 @@ function renderResult(data, filter) {
     let cardsHtml = '';
 
     for (const result of data.results) {
+        // システムフィルタ
+        if (currentSystemFilter !== 'all' && result.system !== currentSystemFilter) continue;
+
         const filteredDetails = (filter === 'all')
             ? result.details
             : (result.details || []).filter(function(d) { return d.category === filter; });
