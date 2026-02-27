@@ -412,6 +412,33 @@ def check_status():
         })
 
 
+@bp.route('/check/test-connectivity', methods=['GET'])
+def test_connectivity():
+    """Stransa サイトへの接続テスト"""
+    import urllib.request
+    import ssl
+
+    urls = [
+        'https://apo-toolboxes.stransa.co.jp/',
+        'https://user.stransa.co.jp/login',
+        'https://www.google.com/',
+    ]
+    results = {}
+    ctx = ssl.create_default_context()
+
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0'
+            })
+            resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+            results[url] = {'status': resp.status, 'ok': True}
+        except Exception as e:
+            results[url] = {'error': str(e), 'ok': False}
+
+    return jsonify(results)
+
+
 @bp.route('/check/log', methods=['GET'])
 def check_log():
     """チェック実行ログ全文を返す"""
