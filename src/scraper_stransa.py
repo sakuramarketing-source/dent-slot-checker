@@ -70,6 +70,13 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 except Exception:
                     await asyncio.sleep(3)
 
+            # DOM安定を待つ（URL変化後もDOMが再構築中の場合がある）
+            try:
+                await page.wait_for_load_state('domcontentloaded', timeout=15000)
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+
         current_url = page.url
         logger.info(f"[{clinic_name}] ログイン後URL: {current_url}")
         await _debug_screenshot(page, clinic_name, '01_after_login')
@@ -78,36 +85,55 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         if '/office' in current_url:
             logger.info(f"[{clinic_name}] オフィス選択ページ検出")
 
-            # ページ上のオフィスリンクを全取得してログ
-            all_links = await page.locator('a').all()
+            # ページ上のオフィスリンクを全取得してログ（失敗しても続行）
             office_names = []
-            for link in all_links:
-                try:
-                    text = (await link.inner_text()).strip()
-                    if text and len(text) > 1 and len(text) < 50:
-                        office_names.append(text)
-                except Exception:
-                    pass
-            logger.info(f"[{clinic_name}] オフィス一覧: {office_names}")
+            try:
+                all_links = await page.locator('a').all()
+                for link in all_links:
+                    try:
+                        text = (await link.inner_text()).strip()
+                        if text and len(text) > 1 and len(text) < 50:
+                            office_names.append(text)
+                    except Exception:
+                        pass
+                logger.info(f"[{clinic_name}] オフィス一覧: {office_names}")
+            except Exception as e:
+                logger.warning(f"[{clinic_name}] オフィス一覧取得スキップ: {e}")
 
-            # 部分一致でオフィスを探す
+            # オフィス選択（リトライ付き）
             found = False
-            # まず完全一致
-            office_link = page.locator(f'a:has-text("{clinic_name}")')
-            if await office_link.count() > 0:
-                await office_link.first.click()
-                found = True
-                logger.info(f"[{clinic_name}] オフィス完全一致でクリック")
-            else:
-                # 部分一致: clinic_nameの主要部分で検索
-                short_name = clinic_name.split('・')[0].replace('（歯科）', '').replace('（', '').replace('）', '')
-                office_link2 = page.locator(f'a:has-text("{short_name}")')
-                if await office_link2.count() > 0:
-                    await office_link2.first.click()
-                    found = True
-                    logger.info(f"[{clinic_name}] オフィス部分一致({short_name})でクリック")
+            short_name = clinic_name.split('・')[0].replace('（歯科）', '').replace('（', '').replace('）', '')
+            for attempt in range(2):
+                try:
+                    # 完全一致
+                    office_link = page.locator(f'a:has-text("{clinic_name}")')
+                    if await office_link.count() > 0:
+                        await office_link.first.click()
+                        found = True
+                        logger.info(f"[{clinic_name}] オフィス完全一致でクリック")
+                        break
+                    # 部分一致
+                    office_link2 = page.locator(f'a:has-text("{short_name}")')
+                    if await office_link2.count() > 0:
+                        await office_link2.first.click()
+                        found = True
+                        logger.info(f"[{clinic_name}] オフィス部分一致({short_name})でクリック")
+                        break
+                    break  # 見つからない場合はリトライ不要
+                except Exception as e:
+                    logger.warning(f"[{clinic_name}] オフィス選択 attempt {attempt+1} 失敗: {e}")
+                    if attempt == 0:
+                        await asyncio.sleep(3)
+                        try:
+                            await page.wait_for_load_state('domcontentloaded', timeout=10000)
+                        except Exception:
+                            pass
 
             if found:
+                try:
+                    await page.wait_for_load_state('domcontentloaded', timeout=15000)
+                except Exception:
+                    pass
                 await asyncio.sleep(3)
             else:
                 logger.warning(f"[{clinic_name}] オフィスが見つからない、URL置換でカレンダーへ")
