@@ -39,8 +39,13 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
     clinic_name = clinic.get('name', '不明')
     try:
         logger.info(f"[{clinic_name}] ログイン開始: {clinic['url']}")
-        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=60000)
-        await asyncio.sleep(2)
+        await page.goto(clinic['url'], wait_until='commit', timeout=60000)
+        # ログインフォームが描画されるまで待つ
+        try:
+            await page.wait_for_selector('input[type="password"]', timeout=30000)
+        except Exception:
+            await asyncio.sleep(5)
+        logger.info(f"[{clinic_name}] ページ読み込み完了: {page.url}")
 
         # メールアドレス入力
         email_input = page.locator('input[type="text"], input[type="email"]').first
@@ -56,8 +61,14 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         login_btn = page.locator('button[type="submit"], button:has-text("ログイン")').first
         if await login_btn.count() > 0:
             await login_btn.click()
-            await page.wait_for_load_state('domcontentloaded', timeout=30000)
-            await asyncio.sleep(2)
+            # ログイン後のページ遷移を待つ
+            try:
+                await page.wait_for_url('**/office**', timeout=15000)
+            except Exception:
+                try:
+                    await page.wait_for_url('**/calendar/**', timeout=15000)
+                except Exception:
+                    await asyncio.sleep(3)
 
         current_url = page.url
         logger.info(f"[{clinic_name}] ログイン後URL: {current_url}")
@@ -97,13 +108,12 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                     logger.info(f"[{clinic_name}] オフィス部分一致({short_name})でクリック")
 
             if found:
-                await page.wait_for_load_state('domcontentloaded', timeout=30000)
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
             else:
                 logger.warning(f"[{clinic_name}] オフィスが見つからない、URL置換でカレンダーへ")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=60000)
-                await asyncio.sleep(2)
+                await page.goto(calendar_url, wait_until='commit', timeout=60000)
+                await asyncio.sleep(3)
 
             current_url = page.url
             logger.info(f"[{clinic_name}] オフィス選択後URL: {current_url}")
@@ -113,16 +123,16 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             if '/office' in current_url:
                 logger.warning(f"[{clinic_name}] まだofficeページ、URL置換でリトライ")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=60000)
-                await asyncio.sleep(2)
+                await page.goto(calendar_url, wait_until='commit', timeout=60000)
+                await asyncio.sleep(3)
                 current_url = page.url
 
         if '/calendar/' in current_url:
             # SPAのカレンダー描画を待つ
             try:
-                await page.wait_for_selector('table', timeout=15000)
+                await page.wait_for_selector('table', timeout=30000)
             except Exception:
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
 
             await _debug_screenshot(page, clinic_name, '03_calendar_before_tab')
 
@@ -257,9 +267,12 @@ async def navigate_to_tomorrow_stransa(page: Page) -> bool:
             logger.debug(f"翌日ボタン検索エラー: {e}")
 
         if next_day_clicked:
-            # ページリロードを待つ
-            await page.wait_for_load_state('domcontentloaded', timeout=30000)
-            await asyncio.sleep(2)
+            # テーブルの再描画を待つ
+            await asyncio.sleep(3)
+            try:
+                await page.wait_for_selector('table', timeout=15000)
+            except Exception:
+                pass
             return True
 
         logger.warning("翌日への移動に失敗（本日のデータを使用）")
