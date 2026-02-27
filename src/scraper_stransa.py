@@ -139,12 +139,13 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             # 「スタッフ」タブに切り替え（複数セレクタパターン）
             staff_switched = False
             staff_selectors = [
-                'text="スタッフ"',
                 'button:has-text("スタッフ")',
                 'a:has-text("スタッフ")',
+                'li:has-text("スタッフ")',
+                '[role="tab"]:has-text("スタッフ")',
                 'span:has-text("スタッフ")',
                 'label:has-text("スタッフ")',
-                'div:has-text("スタッフ")',
+                'div.tab:has-text("スタッフ")',
                 'input[value="スタッフ"]',
             ]
             for sel in staff_selectors:
@@ -152,12 +153,16 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                     btn = page.locator(sel)
                     count = await btn.count()
                     if count > 0:
-                        # 表示されている要素のみクリック
                         for i in range(min(count, 3)):
                             el = btn.nth(i)
                             if await el.is_visible():
                                 await el.click()
-                                await asyncio.sleep(2)
+                                await asyncio.sleep(3)
+                                # テーブル再描画を待つ
+                                try:
+                                    await page.wait_for_selector('table', timeout=10000)
+                                except Exception:
+                                    pass
                                 staff_switched = True
                                 logger.info(f"[{clinic_name}] スタッフタブ切替成功: {sel}")
                                 break
@@ -167,7 +172,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                     continue
 
             if not staff_switched:
-                logger.warning(f"[{clinic_name}] スタッフタブが見つかりません（全セレクタ試行済み）")
+                logger.info(f"[{clinic_name}] スタッフタブ未検出（チェア表示のまま続行）")
 
             await _debug_screenshot(page, clinic_name, '04_after_staff_tab')
             logger.info(f"[{clinic_name}] ログイン成功（URL: {page.url}）")
@@ -521,14 +526,6 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 if cell_clean.startswith('チェア'):
                     continue
 
-                # innerHTML で子要素チェック（ブロック済みセルは空テキストでもHTML要素あり）
-                cell_html = await cell.inner_html()
-                cell_html_clean = cell_html.strip().replace('\xa0', '').replace('\u200b', '').replace('<br>', '').replace('<br/>', '').strip()
-                if '<' in cell_html_clean:
-                    # 子要素がある = 予約枠やブロック済み
-                    logger.debug(f"  [{chair_name}] {time_str}: HTML子要素あり → スキップ (html={cell_html_clean[:80]})")
-                    continue
-
                 # CSSクラスでブロック判定
                 cell_class = (await cell.get_attribute('class')) or ''
                 blocked_indicators = ['closed', 'blocked', 'disabled', 'holiday', 'off',
@@ -543,7 +540,6 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     style_lower = cell_style.lower()
                     # background-color が設定されていて白/透明でなければブロック
                     if 'background' in style_lower:
-                        # 白(#fff, white, rgb(255)等)や透明はOK
                         if not any(w in style_lower for w in ['#fff', 'white', 'transparent', 'rgb(255']):
                             logger.debug(f"  [{chair_name}] {time_str}: 背景色あり → スキップ (style={cell_style[:80]})")
                             continue
@@ -552,6 +548,11 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 if chair_name not in chair_slots:
                     chair_slots[chair_name] = []
                 chair_slots[chair_name].append(time_minutes)
+
+                # デバッグ: 最初の空きセルの情報をログ出力
+                if len(chair_slots[chair_name]) <= 3:
+                    cell_html = await cell.inner_html()
+                    logger.info(f"  空き検出 [{chair_name}] {time_str}: class='{cell_class}' style='{cell_style[:50]}' html='{cell_html[:60]}'")
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
