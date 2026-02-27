@@ -39,9 +39,12 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
     clinic_name = clinic.get('name', '不明')
     try:
         logger.info(f"[{clinic_name}] ログイン開始: {clinic['url']}")
-        await page.goto(clinic['url'])
-        await page.wait_for_load_state('networkidle')
-        await asyncio.sleep(2)  # SPA読み込み待ち
+        await page.goto(clinic['url'], timeout=30000)
+        try:
+            await page.wait_for_load_state('networkidle', timeout=10000)
+        except Exception:
+            pass
+        await asyncio.sleep(1)  # SPA読み込み待ち
         logger.info(f"[{clinic_name}] ページ読み込み完了: {page.url}")
 
         # メールアドレス入力
@@ -58,8 +61,11 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         login_btn = page.locator('button[type="submit"], button:has-text("ログイン")').first
         if await login_btn.count() > 0:
             await login_btn.click()
-            await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(3)  # ログイン後の読み込み待ち
+            try:
+                await page.wait_for_load_state('networkidle', timeout=10000)
+            except Exception:
+                pass
+            await asyncio.sleep(2)  # ログイン後の読み込み待ち
 
         current_url = page.url
         logger.info(f"[{clinic_name}] ログイン後URL: {current_url}")
@@ -69,8 +75,11 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             logger.info(f"[{clinic_name}] オフィス選択ページ検出")
 
             # ページ描画を待つ
-            await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(2)
+            try:
+                await page.wait_for_load_state('networkidle', timeout=10000)
+            except Exception:
+                pass
+            await asyncio.sleep(1)
 
             # ページ上のオフィスリンクを全取得してログ（失敗しても続行）
             office_names = []
@@ -112,19 +121,28 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 except Exception as e:
                     logger.warning(f"[{clinic_name}] オフィス選択 attempt {attempt+1} 失敗: {e}")
                     if attempt == 0:
-                        await asyncio.sleep(3)
-                        await page.wait_for_load_state('networkidle')
+                        await asyncio.sleep(2)
+                        try:
+                            await page.wait_for_load_state('networkidle', timeout=10000)
+                        except Exception:
+                            pass
 
             if found:
-                await page.wait_for_load_state('networkidle')
-                await asyncio.sleep(2)
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
             else:
                 logger.warning(f"[{clinic_name}] オフィスが見つからない（検索: '{office_display_name}' / '{short_name}'）、URL置換でカレンダーへ")
                 logger.warning(f"[{clinic_name}] ※ clinics.yaml に office_name を設定すると改善できます")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url)
-                await page.wait_for_load_state('networkidle')
-                await asyncio.sleep(2)
+                await page.goto(calendar_url, timeout=30000)
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
 
             current_url = page.url
             logger.info(f"[{clinic_name}] オフィス選択後URL: {current_url}")
@@ -133,9 +151,12 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             if '/office' in current_url:
                 logger.warning(f"[{clinic_name}] まだofficeページ、URL置換でリトライ")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url)
-                await page.wait_for_load_state('networkidle')
-                await asyncio.sleep(2)
+                await page.goto(calendar_url, timeout=30000)
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
                 current_url = page.url
 
         if '/calendar/' in current_url:
@@ -281,7 +302,10 @@ async def navigate_to_tomorrow_stransa(page: Page) -> bool:
 
         if next_day_clicked:
             # ページリロードを待つ
-            await page.wait_for_load_state('networkidle')
+            try:
+                await page.wait_for_load_state('networkidle', timeout=10000)
+            except Exception:
+                pass
             await asyncio.sleep(1)
             return True
 

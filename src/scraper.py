@@ -35,8 +35,11 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
         ログイン成功したかどうか
     """
     try:
-        await page.goto(clinic['url'])
-        await page.wait_for_load_state('networkidle')
+        await page.goto(clinic['url'], timeout=30000)
+        try:
+            await page.wait_for_load_state('networkidle', timeout=10000)
+        except Exception:
+            pass
 
         # ログインフォームの存在確認
         # dent-sys.net のログインフォームは通常 input[type="text"] と input[name="password"]
@@ -51,7 +54,10 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
             submit_btn = page.locator('input[type="submit"], button[type="submit"], input[value="ログイン"]').first
             if await submit_btn.count() > 0:
                 await submit_btn.click()
-                await page.wait_for_load_state('networkidle')
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                except Exception:
+                    pass
 
         logger.info(f"ログイン完了: {clinic['name']}")
         return True
@@ -73,8 +79,11 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         tomorrow_btn = page.locator('input[value="翌日"]').first
         if await tomorrow_btn.count() > 0:
             await tomorrow_btn.click()
-            await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(2)  # iframe読み込み待ち
+            try:
+                await page.wait_for_load_state('networkidle', timeout=10000)
+            except Exception:
+                pass
+            await asyncio.sleep(1)  # iframe読み込み待ち
             logger.info("翌日に移動しました")
             return True
 
@@ -82,8 +91,11 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         tomorrow_link = page.locator('a:has-text("翌日"), a:has-text("次の日")').first
         if await tomorrow_link.count() > 0:
             await tomorrow_link.click()
-            await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(2)
+            try:
+                await page.wait_for_load_state('networkidle', timeout=10000)
+            except Exception:
+                pass
+            await asyncio.sleep(1)
             logger.info("翌日に移動しました")
             return True
 
@@ -177,83 +189,66 @@ async def get_column_headers_from_main_page(
 
 
 async def detect_start_time_from_iframe(frame: Frame, default_hour: int = 8, default_minute: int = 30) -> int:
-    """
-    iframe内のスケジュール表から開始時刻を検出
-
-    dent-sysのスケジュール表では、各行の左端に時刻表示がある。
-    最初の時刻表示を取得して開始時刻を特定する。
-
-    Returns:
-        開始時刻（分単位、例: 8:30 = 510）
-    """
+    """iframe内のスケジュール表から開始時刻を検出（evaluate一括取得）"""
     default_minutes = default_hour * 60 + default_minute
-
     try:
-        # 方法1: テーブル行の最初のセルから時刻を探す
-        rows = await frame.locator('table tr').all()
-        for row in rows[:20]:  # 最初の20行を調べる
-            cells = await row.locator('th, td').all()
-            if not cells:
+        first_texts = await frame.evaluate('''() => {
+            const rows = document.querySelectorAll('table tr');
+            const texts = [];
+            for (let i = 0; i < Math.min(rows.length, 20); i++) {
+                const cells = rows[i].querySelectorAll('th, td');
+                if (cells.length > 0) texts.push((cells[0].textContent || '').trim());
+            }
+            return texts;
+        }''')
+        for text in first_texts:
+            if not text:
                 continue
-            first_text = (await cells[0].inner_text()).strip()
-            if not first_text:
-                continue
-
-            # "H:MM" or "HH:MM" 形式の時刻を検索
-            time_match = re.match(r'^(\d{1,2}):(\d{2})$', first_text)
+            time_match = re.match(r'^(\d{1,2}):(\d{2})$', text)
             if time_match:
-                hours = int(time_match.group(1))
-                minutes = int(time_match.group(2))
-                if 0 <= hours <= 23 and 0 <= minutes < 60:
-                    detected = hours * 60 + minutes
-                    logger.info(f"開始時刻を検出: {hours}:{minutes:02d} (row_idx=0)")
-                    return detected
-
-            # 時間のみ（"8" or "9"）の場合
-            if first_text.isdigit():
-                hours = int(first_text)
-                if 6 <= hours <= 12:
-                    # 次のセルや行から分を推測（通常00分）
-                    detected = hours * 60
-                    logger.info(f"開始時刻を検出（時のみ）: {hours}:00 (row_idx=0)")
-                    return detected
-
+                h, m = int(time_match.group(1)), int(time_match.group(2))
+                if 0 <= h <= 23 and 0 <= m < 60:
+                    logger.info(f"開始時刻を検出: {h}:{m:02d}")
+                    return h * 60 + m
+            if text.isdigit():
+                h = int(text)
+                if 6 <= h <= 12:
+                    logger.info(f"開始時刻を検出（時のみ）: {h}:00")
+                    return h * 60
         logger.info(f"開始時刻検出できず、デフォルト使用: {default_hour}:{default_minute:02d}")
     except Exception as e:
         logger.debug(f"開始時刻検出エラー: {e}")
-
     return default_minutes
 
 
 async def build_row_time_mapping(frame: Frame, slot_interval: int = 5) -> Dict[int, int]:
     """
     iframe内のスケジュール表から row_idx → 実時刻(分) のマッピングを構築
-
-    dent-sysの表構造:
-    - 各時間の最初の行: 左端セルに "9" や "14" 等の時表示
-    - 以降の行: 左端セルに "10", "20", "30" 等の分表示
-    - 昼休み: 行自体が存在しない（スキップされる）
-    - スロット間隔は分院により異なる（5分/10分）
-
-    時間 vs 分の区別ルール: 時間は常に前進する。
-    値を分として解釈した時刻が前の行より戻る場合、それは新しい時間マーカー。
-
-    Returns:
-        {row_idx: time_minutes} の辞書
+    evaluate()で全行データを一括取得し、Python側で時刻パース。
     """
     row_map: Dict[int, int] = {}
     current_hour: Optional[int] = None
     row_idx = 0
 
     try:
-        rows = await frame.locator('table tr').all()
+        # JS側で全行の最初のセルテキストとリンク有無を一括取得
+        rows_data = await frame.evaluate('''() => {
+            const rows = document.querySelectorAll('table tr');
+            return Array.from(rows).map(row => {
+                const cells = row.querySelectorAll('th, td');
+                if (cells.length < 2) return null;
+                return {
+                    text: (cells[0].textContent || '').trim(),
+                    hasLinks: row.querySelectorAll('a').length > 0
+                };
+            });
+        }''')
 
-        for row in rows:
-            cells = await row.locator('th, td').all()
-            if len(cells) < 2:
+        for row_data in rows_data:
+            if row_data is None:
                 continue
 
-            first_text = (await cells[0].inner_text()).strip()
+            first_text = row_data['text']
 
             # "H:MM" or "HH:MM" 形式
             time_match = re.match(r'^(\d{1,2}):(\d{2})$', first_text)
@@ -268,31 +263,25 @@ async def build_row_time_mapping(frame: Frame, slot_interval: int = 5) -> Dict[i
                 val = int(first_text)
 
                 if current_hour is None:
-                    # 最初の数値 → 時間として扱う
                     if 0 <= val <= 23:
                         current_hour = val
                         row_map[row_idx] = current_hour * 60
                         row_idx += 1
                         continue
                 else:
-                    # 分として解釈した場合の時刻
                     candidate_as_minute = current_hour * 60 + val
                     prev_time = row_map.get(row_idx - 1, -1)
 
                     if 0 <= val < 60 and candidate_as_minute > prev_time:
-                        # 時間が前進する → 分として扱う
                         row_map[row_idx] = candidate_as_minute
                         row_idx += 1
                         continue
                     elif 0 <= val <= 23 and val > current_hour:
-                        # 分として解釈すると前進しないが、時間としては前進 → 新しい時間
                         current_hour = val
                         row_map[row_idx] = current_hour * 60
                         row_idx += 1
                         continue
                     elif 0 <= val <= 23 and val == current_hour:
-                        # 同じ時間の繰り返し → 分の可能性（0分）
-                        # 前の行が xx:50 で次が xx:00 の場合
                         candidate_as_hour = val * 60
                         if candidate_as_hour > prev_time:
                             current_hour = val
@@ -300,9 +289,8 @@ async def build_row_time_mapping(frame: Frame, slot_interval: int = 5) -> Dict[i
                             row_idx += 1
                             continue
 
-            # 空セルだが予約スロット行の可能性（<a>タグがある行）
-            has_links = await row.locator('a').count()
-            if has_links > 0 and current_hour is not None:
+            # 空セルだが予約スロット行の可能性（リンクがある行）
+            if row_data['hasLinks'] and current_hour is not None:
                 if (row_idx - 1) in row_map:
                     row_map[row_idx] = row_map[row_idx - 1] + slot_interval
                 row_idx += 1
@@ -612,7 +600,7 @@ async def scrape_all_clinics(
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
 
-    sem = asyncio.Semaphore(6)
+    sem = asyncio.Semaphore(3)  # 3並列（dent-sysサーバー負荷軽減）
 
     async def _scrape_one(clinic, disabled_staff):
         async with sem:
