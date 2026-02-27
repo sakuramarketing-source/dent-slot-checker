@@ -75,11 +75,10 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 await page.wait_for_load_state('domcontentloaded', timeout=15000)
             except Exception:
                 pass
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
         current_url = page.url
         logger.info(f"[{clinic_name}] ログイン後URL: {current_url}")
-        await _debug_screenshot(page, clinic_name, '01_after_login')
 
         # オフィス選択ページ (/office) の場合
         if '/office' in current_url:
@@ -131,10 +130,10 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
 
             if found:
                 try:
-                    await page.wait_for_load_state('domcontentloaded', timeout=15000)
+                    await page.wait_for_load_state('domcontentloaded', timeout=10000)
                 except Exception:
                     pass
-                await asyncio.sleep(3)
+                await asyncio.sleep(1.5)
             else:
                 logger.warning(f"[{clinic_name}] オフィスが見つからない、URL置換でカレンダーへ")
                 calendar_url = current_url.replace('/office', '/calendar/')
@@ -143,7 +142,6 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
 
             current_url = page.url
             logger.info(f"[{clinic_name}] オフィス選択後URL: {current_url}")
-            await _debug_screenshot(page, clinic_name, '02_after_office')
 
             # まだofficeページの場合はリトライ
             if '/office' in current_url:
@@ -159,8 +157,6 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 await page.wait_for_selector('table', timeout=30000)
             except Exception:
                 await asyncio.sleep(5)
-
-            await _debug_screenshot(page, clinic_name, '03_calendar_before_tab')
 
             # 「スタッフ」タブに切り替え（複数セレクタパターン）
             staff_switched = False
@@ -183,7 +179,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                             el = btn.nth(i)
                             if await el.is_visible():
                                 await el.click()
-                                await asyncio.sleep(3)
+                                await asyncio.sleep(1.5)
                                 # テーブル再描画を待つ
                                 try:
                                     await page.wait_for_selector('table', timeout=10000)
@@ -200,7 +196,6 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             if not staff_switched:
                 logger.info(f"[{clinic_name}] スタッフタブ未検出（チェア表示のまま続行）")
 
-            await _debug_screenshot(page, clinic_name, '04_after_staff_tab')
             logger.info(f"[{clinic_name}] ログイン成功（URL: {page.url}）")
             return True
         else:
@@ -287,7 +282,7 @@ async def navigate_to_tomorrow_stransa(page: Page) -> bool:
                         # 「›」のみ（「»」や「››」を除外）
                         if text in next_day_chars:
                             await link.click()
-                            await asyncio.sleep(3)  # 待機時間を増やす
+                            await asyncio.sleep(1.5)
                             logger.info(f"「{text}」リンクで翌日に移動")
                             next_day_clicked = True
                             break
@@ -299,9 +294,9 @@ async def navigate_to_tomorrow_stransa(page: Page) -> bool:
 
         if next_day_clicked:
             # テーブルの再描画を待つ
-            await asyncio.sleep(3)
+            await asyncio.sleep(1.5)
             try:
-                await page.wait_for_selector('table', timeout=15000)
+                await page.wait_for_selector('table', timeout=10000)
             except Exception:
                 pass
             return True
@@ -552,12 +547,20 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 if cell_clean.startswith('チェア'):
                     continue
 
+                # colspan/rowspan チェック（結合セル = 休憩/閉鎖）
+                colspan = await cell.get_attribute('colspan')
+                if colspan and colspan != '1':
+                    continue
+                rowspan = await cell.get_attribute('rowspan')
+                if rowspan and rowspan != '1':
+                    continue
+
                 # CSSクラスでブロック判定
                 cell_class = (await cell.get_attribute('class')) or ''
                 blocked_indicators = ['closed', 'blocked', 'disabled', 'holiday', 'off',
-                                      'gray', 'lunch', 'break', 'reserve', 'past']
+                                      'gray', 'lunch', 'break', 'reserve', 'past',
+                                      'empty', 'none', 'unavailable', 'inactive']
                 if any(ind in cell_class.lower() for ind in blocked_indicators):
-                    logger.debug(f"  [{chair_name}] {time_str}: ブロックCSS → スキップ (class={cell_class})")
                     continue
 
                 # style属性でブロック判定（背景色付き = ブロック）
@@ -567,18 +570,24 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     # background-color が設定されていて白/透明でなければブロック
                     if 'background' in style_lower:
                         if not any(w in style_lower for w in ['#fff', 'white', 'transparent', 'rgb(255']):
-                            logger.debug(f"  [{chair_name}] {time_str}: 背景色あり → スキップ (style={cell_style[:80]})")
                             continue
+                    # display:none のセルはスキップ
+                    if 'display' in style_lower and 'none' in style_lower:
+                        continue
 
                 # 全チェックをパス → 空き枠
                 if chair_name not in chair_slots:
                     chair_slots[chair_name] = []
                 chair_slots[chair_name].append(time_minutes)
 
-                # デバッグ: 最初の空きセルの情報をログ出力
-                if len(chair_slots[chair_name]) <= 3:
-                    cell_html = await cell.inner_html()
-                    logger.info(f"  空き検出 [{chair_name}] {time_str}: class='{cell_class}' style='{cell_style[:50]}' html='{cell_html[:60]}'")
+                # 診断ログ: 最初の空きセルのouterHTMLを出力
+                if len(chair_slots[chair_name]) <= 5:
+                    try:
+                        cell_outer = await cell.evaluate('el => el.outerHTML.substring(0, 250)')
+                        logger.info(f"  [DIAG] [{chair_name}] {time_str}: {cell_outer}")
+                    except Exception:
+                        cell_html = await cell.inner_html()
+                        logger.info(f"  [DIAG] [{chair_name}] {time_str}: class='{cell_class}' html='{cell_html[:100]}'")
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
@@ -650,7 +659,7 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
-    sem = asyncio.Semaphore(3)
+    sem = asyncio.Semaphore(7)  # 全医院同時実行
 
     stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
     logger.info(f"Stransa対象分院数: {len(stransa_clinics)}")
