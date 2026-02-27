@@ -224,20 +224,27 @@ def get_result_with_categories():
 
             doctors = set(clinic_config.get('doctors', []))
             hygienists = set(clinic_config.get('hygienists', []))
+            orthodontists = set(clinic_config.get('orthodontists', []))
             memos = clinic_config.get('memos', {})
             thresholds = clinic_config.get('slot_threshold', {})
             dr_threshold = thresholds.get('doctor', 30)
             dh_threshold = thresholds.get('hygienist', 30)
+            ortho_threshold = thresholds.get('orthodontist', 30)
 
             doctor_blocks = 0
             hygienist_blocks = 0
+            orthodontist_blocks = 0
             other_blocks = 0
 
             for detail in result.get('details', []):
                 staff_name = detail.get('doctor', '')
 
-                # 職種分類と再計算
-                if staff_name in doctors:
+                # 職種分類と再計算（矯正が最優先）
+                if staff_name in orthodontists:
+                    detail['category'] = 'orthodontist'
+                    _recalculate_detail(detail, ortho_threshold)
+                    detail.setdefault('threshold_minutes', ortho_threshold)
+                elif staff_name in doctors:
                     detail['category'] = 'doctor'
                     _recalculate_detail(detail, dr_threshold)
                     detail.setdefault('threshold_minutes', dr_threshold)
@@ -255,6 +262,8 @@ def get_result_with_categories():
                     doctor_blocks += blocks
                 elif detail['category'] == 'hygienist':
                     hygienist_blocks += blocks
+                elif detail['category'] == 'orthodontist':
+                    orthodontist_blocks += blocks
                 else:
                     other_blocks += blocks
 
@@ -265,6 +274,7 @@ def get_result_with_categories():
             result['category_summary'] = {
                 'doctor': doctor_blocks,
                 'hygienist': hygienist_blocks,
+                'orthodontist': orthodontist_blocks,
                 'other': other_blocks
             }
             result['slot_threshold'] = {
@@ -412,10 +422,12 @@ def run_check():
                 logger_t.info(f"dent-sys完了: {analysis['summary']}")
 
             # 統合結果
-            check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+            from datetime import timezone
+            JST = timezone(timedelta(hours=9))
+            check_date = (datetime.now(JST) + timedelta(days=1)).strftime('%Y-%m-%d')
             combined = {
                 'check_date': check_date,
-                'checked_at': datetime.now().isoformat(),
+                'checked_at': datetime.now(JST).isoformat(),
                 'results': all_results,
                 'summary': {
                     'total_clinics': total_clinics,

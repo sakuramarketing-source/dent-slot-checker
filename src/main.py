@@ -7,7 +7,7 @@ import asyncio
 import argparse
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -31,7 +31,8 @@ def setup_logging(log_dir: Path = None):
 
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    JST = timezone(timedelta(hours=9))
+    timestamp = datetime.now(JST).strftime('%Y%m%d_%H%M%S')
     log_file = log_dir / f'slot_checker_{timestamp}.log'
 
     logging.basicConfig(
@@ -62,8 +63,9 @@ def analyze_results(
     Returns:
         分析結果
     """
-    check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-    checked_at = datetime.now().isoformat()
+    JST = timezone(timedelta(hours=9))
+    check_date = (datetime.now(JST) + timedelta(days=1)).strftime('%Y-%m-%d')
+    checked_at = datetime.now(JST).isoformat()
 
     clinic_results = []
     clinics_with_availability = 0
@@ -88,13 +90,17 @@ def analyze_results(
         clinic_config = staff_by_clinic.get(clinic_name, {})
         doctors_set = set(clinic_config.get('doctors', []))
         hygienists_set = set(clinic_config.get('hygienists', []))
+        orthodontists_set = set(clinic_config.get('orthodontists', []))
         thresholds = clinic_config.get('slot_threshold', {})
         dr_threshold = thresholds.get('doctor', 30)
         dh_threshold = thresholds.get('hygienist', 30)
+        ortho_threshold = thresholds.get('orthodontist', 30)
 
         for doctor_name, slot_times in doctor_slots.items():
-            # スタッフの職種に応じた閾値を決定
-            if doctor_name in doctors_set:
+            # スタッフの職種に応じた閾値を決定（矯正が最優先）
+            if doctor_name in orthodontists_set:
+                threshold = ortho_threshold
+            elif doctor_name in doctors_set:
                 threshold = dr_threshold
             elif doctor_name in hygienists_set:
                 threshold = dh_threshold
@@ -245,8 +251,9 @@ async def main_async(
         clinics_with_availability += analysis['summary']['clinics_with_availability']
 
     # 統合結果を作成
-    check_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-    checked_at = datetime.now().isoformat()
+    JST = timezone(timedelta(hours=9))
+    check_date = (datetime.now(JST) + timedelta(days=1)).strftime('%Y-%m-%d')
+    checked_at = datetime.now(JST).isoformat()
 
     combined_results = {
         'check_date': check_date,

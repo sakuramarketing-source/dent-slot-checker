@@ -2,7 +2,7 @@
 
 import json
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Any
 from src.gcs_helper import upload_to_gcs
@@ -66,7 +66,8 @@ def write_csv(results: Dict[str, Any], output_path: Path) -> None:
 
 def create_output_filename(output_dir: Path, check_date: str, extension: str) -> Path:
     """出力ファイル名を生成"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    JST = timezone(timedelta(hours=9))
+    timestamp = datetime.now(JST).strftime('%Y%m%d_%H%M%S')
     filename = f"slot_check_{check_date}_{timestamp}.{extension}"
     return output_dir / filename
 

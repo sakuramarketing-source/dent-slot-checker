@@ -502,31 +502,63 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 continue
 
             # 各チェア列をチェック
+            time_str = f"{hours}:{mins:02d}"
             for col_idx, chair_name in chairs.items():
                 if col_idx >= len(cells):
                     continue
 
                 cell = cells[col_idx]
 
-                # セルの内容を取得
+                # セルの内容を取得（テキスト・HTML・属性）
                 cell_text = (await cell.inner_text()).strip()
-                # nbsp等の不可視文字も除去
                 cell_clean = cell_text.replace('\xa0', '').replace('\u200b', '').strip()
 
-                # 空きセルの判定
-                # - テキストが空（予約が入っていない）
-                # - ヘッダー行ではない
-                is_empty = (not cell_clean or cell_clean == '')
-                is_header = cell_clean.startswith('チェア')
+                # テキストがあれば予約済み → スキップ
+                if cell_clean:
+                    continue
 
-                if is_empty and not is_header:
-                    if chair_name not in chair_slots:
-                        chair_slots[chair_name] = []
-                    chair_slots[chair_name].append(time_minutes)
+                # ヘッダー行スキップ
+                if cell_clean.startswith('チェア'):
+                    continue
+
+                # innerHTML で子要素チェック（ブロック済みセルは空テキストでもHTML要素あり）
+                cell_html = await cell.inner_html()
+                cell_html_clean = cell_html.strip().replace('\xa0', '').replace('\u200b', '').replace('<br>', '').replace('<br/>', '').strip()
+                if '<' in cell_html_clean:
+                    # 子要素がある = 予約枠やブロック済み
+                    logger.debug(f"  [{chair_name}] {time_str}: HTML子要素あり → スキップ (html={cell_html_clean[:80]})")
+                    continue
+
+                # CSSクラスでブロック判定
+                cell_class = (await cell.get_attribute('class')) or ''
+                blocked_indicators = ['closed', 'blocked', 'disabled', 'holiday', 'off',
+                                      'gray', 'lunch', 'break', 'reserve', 'past']
+                if any(ind in cell_class.lower() for ind in blocked_indicators):
+                    logger.debug(f"  [{chair_name}] {time_str}: ブロックCSS → スキップ (class={cell_class})")
+                    continue
+
+                # style属性でブロック判定（背景色付き = ブロック）
+                cell_style = (await cell.get_attribute('style')) or ''
+                if cell_style:
+                    style_lower = cell_style.lower()
+                    # background-color が設定されていて白/透明でなければブロック
+                    if 'background' in style_lower:
+                        # 白(#fff, white, rgb(255)等)や透明はOK
+                        if not any(w in style_lower for w in ['#fff', 'white', 'transparent', 'rgb(255']):
+                            logger.debug(f"  [{chair_name}] {time_str}: 背景色あり → スキップ (style={cell_style[:80]})")
+                            continue
+
+                # 全チェックをパス → 空き枠
+                if chair_name not in chair_slots:
+                    chair_slots[chair_name] = []
+                chair_slots[chair_name].append(time_minutes)
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
-            logger.info(f"  {chair}: {len(slots)}スロット（15分枠）")
+            times_str = ', '.join(f"{s//60}:{s%60:02d}" for s in sorted(slots)[:10])
+            if len(slots) > 10:
+                times_str += f"... (+{len(slots)-10})"
+            logger.info(f"  {chair}: {len(slots)}スロット（15分枠）: {times_str}")
 
     except Exception as e:
         logger.error(f"空きスロット取得エラー: {e}")

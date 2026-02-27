@@ -69,7 +69,7 @@ async function loadStaff() {
             `;
 
             // 閾値設定UI
-            const threshold = clinicData.slot_threshold || {doctor: 30, hygienist: 30};
+            const threshold = clinicData.slot_threshold || {doctor: 30, hygienist: 30, orthodontist: 30};
             html += `
                 <div class="threshold-settings" data-clinic="${clinicName}">
                     <span class="threshold-label">初診枠:</span>
@@ -83,6 +83,12 @@ async function loadStaff() {
                         <span class="threshold-cat hygienist">DH</span>
                         <input type="number" class="threshold-input" value="${threshold.hygienist}" min="10" max="120" step="5"
                             data-type="hygienist" onchange="updateThreshold(this, '${clinicName}')">
+                        <span class="threshold-unit">分</span>
+                    </span>
+                    <span class="threshold-group">
+                        <span class="threshold-cat orthodontist">矯正</span>
+                        <input type="number" class="threshold-input" value="${threshold.orthodontist || 30}" min="10" max="120" step="5"
+                            data-type="orthodontist" onchange="updateThreshold(this, '${clinicName}')">
                         <span class="threshold-unit">分</span>
                     </span>
                 </div>
@@ -113,9 +119,9 @@ async function loadStaff() {
                                 <span class="staff-name">${staff.name}</span>
                                 ${isAutoDisabled ? '<span class="auto-tag">自動除外</span>' : ''}
                                 <div class="category-buttons">
-                                    <button class="cat-btn ${staff.category === 'doctor' ? 'active' : ''}" data-category="doctor" ${isDisabled ? 'disabled' : ''}>Dr</button>
-                                    <button class="cat-btn ${staff.category === 'hygienist' ? 'active' : ''}" data-category="hygienist" ${isDisabled ? 'disabled' : ''}>DH</button>
-                                    <button class="cat-btn ${staff.category === 'unknown' ? 'active' : ''}" data-category="unknown" ${isDisabled ? 'disabled' : ''}>--</button>
+                                    <button class="cat-btn ${(staff.categories || []).includes('doctor') ? 'active' : ''}" data-category="doctor" ${isDisabled ? 'disabled' : ''}>Dr</button>
+                                    <button class="cat-btn ${(staff.categories || []).includes('hygienist') ? 'active' : ''}" data-category="hygienist" ${isDisabled ? 'disabled' : ''}>DH</button>
+                                    <button class="cat-btn ${(staff.categories || []).includes('orthodontist') ? 'active' : ''}" data-category="orthodontist" ${isDisabled ? 'disabled' : ''}>矯正</button>
                                 </div>
                                 <div class="memo-input">
                                     <input type="text" class="memo-field" placeholder="メモ" value="${staff.memo || ''}"
@@ -228,11 +234,13 @@ async function handleCategoryClick(event) {
     const staffItem = btn.closest('.staff-item');
     const clinic = staffItem.dataset.clinic;
     const name = staffItem.dataset.name;
-    const category = btn.dataset.category;
 
-    // ボタン状態を更新
-    staffItem.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    // トグル方式: クリックしたボタンのactive状態を切り替え
+    btn.classList.toggle('active');
+
+    // 現在アクティブな全カテゴリを取得
+    const activeCategories = [...staffItem.querySelectorAll('.cat-btn.active')]
+        .map(b => b.dataset.category);
 
     try {
         const response = await fetch(`/api/staff/${encodeURIComponent(clinic)}`, {
@@ -240,7 +248,7 @@ async function handleCategoryClick(event) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name, category })
+            body: JSON.stringify({ name, categories: activeCategories })
         });
 
         const data = await safeJson(response);

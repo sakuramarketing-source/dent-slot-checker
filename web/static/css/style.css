@@ -401,6 +401,11 @@ h1 {
     background: #f3e5f5;
 }
 
+.threshold-cat.orthodontist {
+    color: #e67e22;
+    background: #fdf2e9;
+}
+
 .threshold-input {
     width: 55px;
     padding: 0.2rem 0.3rem;
@@ -511,6 +516,11 @@ h1 {
 .cat-btn[data-category="hygienist"].active {
     background: #9b59b6;
     border-color: #9b59b6;
+}
+
+.cat-btn[data-category="orthodontist"].active {
+    background: #e67e22;
+    border-color: #e67e22;
 }
 
 .cat-btn:disabled {
@@ -860,6 +870,11 @@ h1 {
     color: #9b59b6;
 }
 
+.cat-stat.orthodontist {
+    background: #fdf2e9;
+    color: #e67e22;
+}
+
 .cat-stat.other {
     background: #ecf0f1;
     color: #7f8c8d;
@@ -1011,6 +1026,10 @@ h1 {
 
 .timeline-slot.hygienist {
     background: #9b59b6;
+}
+
+.timeline-slot.orthodontist {
+    background: #e67e22;
 }
 
 .timeline-slot.unknown {

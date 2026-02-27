@@ -15,6 +15,7 @@
         <button class="category-filter-btn active" data-filter="all">全て</button>
         <button class="category-filter-btn" data-filter="doctor">Dr</button>
         <button class="category-filter-btn" data-filter="hygienist">DH</button>
+        <button class="category-filter-btn" data-filter="orthodontist">矯正</button>
     </span>
 </div>
 
@@ -131,10 +132,11 @@ function renderResult(data, filter) {
                 </div>
                 <div class="clinic-body">
                     <p><strong>${getThresholdLabel(result, filter)}:</strong> ${filteredBlocks}</p>
-                    ${(catSummary.doctor || catSummary.hygienist) ? `
+                    ${(catSummary.doctor || catSummary.hygienist || catSummary.orthodontist) ? `
                         <div class="category-summary">
                             ${catSummary.doctor ? '<span class="cat-stat doctor">Dr: ' + catSummary.doctor + '</span>' : ''}
                             ${catSummary.hygienist ? '<span class="cat-stat hygienist">DH: ' + catSummary.hygienist + '</span>' : ''}
+                            ${catSummary.orthodontist ? '<span class="cat-stat orthodontist">矯正: ' + catSummary.orthodontist + '</span>' : ''}
                             ${catSummary.unknown ? '<span class="cat-stat other">他: ' + catSummary.unknown + '</span>' : ''}
                         </div>
                     ` : ''}

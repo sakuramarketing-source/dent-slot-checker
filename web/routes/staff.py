@@ -153,10 +153,12 @@ def get_all_staff():
         # 設定ファイルの分類済みスタッフも追加
         all_staff_names.update(clinic_config.get('doctors', []))
         all_staff_names.update(clinic_config.get('hygienists', []))
+        all_staff_names.update(clinic_config.get('orthodontists', []))
         all_staff_names.update(clinic_config.get('disabled', []))
 
-        doctors = clinic_config.get('doctors', [])
-        hygienists = clinic_config.get('hygienists', [])
+        doctors = set(clinic_config.get('doctors', []))
+        hygienists = set(clinic_config.get('hygienists', []))
+        orthodontists = set(clinic_config.get('orthodontists', []))
         disabled = clinic_config.get('disabled', [])
         web_booking = set(clinic_config.get('web_booking', []))
         thresholds = clinic_config.get('slot_threshold', {})
@@ -167,16 +169,21 @@ def get_all_staff():
             'slot_threshold': {
                 'doctor': thresholds.get('doctor', 30),
                 'hygienist': thresholds.get('hygienist', 30),
+                'orthodontist': thresholds.get('orthodontist', 30),
             }
         }
 
         for staff_name in sorted(all_staff_names):
-            # カテゴリを判定
-            category = 'unknown'
+            # カテゴリを判定（複数カテゴリ対応）
+            categories = []
             if staff_name in doctors:
-                category = 'doctor'
-            elif staff_name in hygienists:
-                category = 'hygienist'
+                categories.append('doctor')
+            if staff_name in hygienists:
+                categories.append('hygienist')
+            if staff_name in orthodontists:
+                categories.append('orthodontist')
+            # 互換性のため単一categoryも保持
+            category = categories[0] if categories else 'unknown'
 
             # 除外パターンに該当するかチェック
             auto_disabled = any(pattern in staff_name for pattern in exclude_patterns)
@@ -194,6 +201,7 @@ def get_all_staff():
             result[clinic_name]['staff'].append({
                 'name': staff_name,
                 'category': category,
+                'categories': categories,
                 'enabled': not is_disabled,
                 'auto_disabled': auto_disabled,  # 自動除外（訪問系など）
                 'web_booking': is_web_booking,
@@ -214,13 +222,19 @@ def get_clinic_staff(clinic_name):
 
 @bp.route('/<clinic_name>', methods=['POST'])
 def update_staff_category(clinic_name):
-    """スタッフの職種を更新"""
+    """スタッフの職種を更新（複数カテゴリ対応）"""
     data = request.get_json()
     staff_name = data.get('name')
-    category = data.get('category')  # 'doctor', 'hygienist', 'unknown'
 
-    if not staff_name or not category:
-        return jsonify({'error': 'name and category are required'}), 400
+    # 複数カテゴリ対応（旧API互換: categoryも受け付ける）
+    categories = data.get('categories', [])
+    if not categories:
+        cat = data.get('category')
+        if cat and cat != 'unknown':
+            categories = [cat]
+
+    if not staff_name:
+        return jsonify({'error': 'name is required'}), 400
 
     # 設定を読み込み
     staff_rules = load_staff_rules()
@@ -229,31 +243,26 @@ def update_staff_category(clinic_name):
         staff_rules['staff_by_clinic'] = {}
 
     if clinic_name not in staff_rules['staff_by_clinic']:
-        staff_rules['staff_by_clinic'][clinic_name] = {'doctors': [], 'hygienists': [], 'disabled': []}
+        staff_rules['staff_by_clinic'][clinic_name] = {'doctors': [], 'hygienists': [], 'orthodontists': [], 'disabled': []}
 
     clinic_config = staff_rules['staff_by_clinic'][clinic_name]
 
-    # 既存の分類から削除
-    if 'doctors' in clinic_config and staff_name in clinic_config['doctors']:
-        clinic_config['doctors'].remove(staff_name)
-    if 'hygienists' in clinic_config and staff_name in clinic_config['hygienists']:
-        clinic_config['hygienists'].remove(staff_name)
+    # 全カテゴリリストからスタッフ名を削除
+    for key in ['doctors', 'hygienists', 'orthodontists']:
+        if key in clinic_config and staff_name in clinic_config[key]:
+            clinic_config[key].remove(staff_name)
 
-    # 新しい分類に追加
-    if category == 'doctor':
-        if 'doctors' not in clinic_config:
-            clinic_config['doctors'] = []
-        clinic_config['doctors'].append(staff_name)
-    elif category == 'hygienist':
-        if 'hygienists' not in clinic_config:
-            clinic_config['hygienists'] = []
-        clinic_config['hygienists'].append(staff_name)
-    # 'unknown' の場合は何も追加しない
+    # 新しいカテゴリに追加
+    cat_to_key = {'doctor': 'doctors', 'hygienist': 'hygienists', 'orthodontist': 'orthodontists'}
+    for cat in categories:
+        list_key = cat_to_key.get(cat)
+        if list_key:
+            clinic_config.setdefault(list_key, []).append(staff_name)
 
     # 保存
     save_staff_rules(staff_rules)
 
-    return jsonify({'success': True, 'clinic': clinic_name, 'name': staff_name, 'category': category})
+    return jsonify({'success': True, 'clinic': clinic_name, 'name': staff_name, 'categories': categories})
 
 
 @bp.route('/<clinic_name>/toggle', methods=['POST'])
