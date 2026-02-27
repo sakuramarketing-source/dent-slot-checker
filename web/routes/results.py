@@ -414,27 +414,59 @@ def check_status():
 
 @bp.route('/check/test-connectivity', methods=['GET'])
 def test_connectivity():
-    """Stransa サイトへの接続テスト"""
+    """Stransa サイトへの接続テスト（urllib + Playwright）"""
     import urllib.request
     import ssl
+    import asyncio
 
     urls = [
         'https://apo-toolboxes.stransa.co.jp/',
         'https://user.stransa.co.jp/login',
         'https://www.google.com/',
     ]
-    results = {}
+    results = {'urllib': {}, 'playwright': {}}
     ctx = ssl.create_default_context()
 
+    # urllib テスト
     for url in urls:
         try:
             req = urllib.request.Request(url, headers={
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0'
             })
             resp = urllib.request.urlopen(req, timeout=15, context=ctx)
-            results[url] = {'status': resp.status, 'ok': True}
+            results['urllib'][url] = {'status': resp.status, 'ok': True}
         except Exception as e:
-            results[url] = {'error': str(e), 'ok': False}
+            results['urllib'][url] = {'error': str(e), 'ok': False}
+
+    # Playwright テスト（google.comのみ、軽量に）
+    async def test_playwright():
+        from playwright.async_api import async_playwright
+        pw_results = {}
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+                )
+                page = await browser.new_page()
+                for url in ['https://www.google.com/', 'https://apo-toolboxes.stransa.co.jp/']:
+                    try:
+                        resp = await page.goto(url, wait_until='commit', timeout=30000)
+                        pw_results[url] = {
+                            'status': resp.status if resp else None,
+                            'ok': True
+                        }
+                    except Exception as e:
+                        pw_results[url] = {'error': str(e)[:200], 'ok': False}
+                await browser.close()
+        except Exception as e:
+            pw_results['_error'] = str(e)[:200]
+        return pw_results
+
+    try:
+        results['playwright'] = asyncio.run(test_playwright())
+    except Exception as e:
+        results['playwright'] = {'_error': str(e)[:200]}
 
     return jsonify(results)
 
