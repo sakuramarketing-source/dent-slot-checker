@@ -35,8 +35,8 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
         ログイン成功したかどうか
     """
     try:
-        await page.goto(clinic['url'], wait_until='commit', timeout=60000)
-        await page.wait_for_selector('input[type="text"]', timeout=30000)
+        await page.goto(clinic['url'])
+        await page.wait_for_load_state('networkidle')
 
         # ログインフォームの存在確認
         # dent-sys.net のログインフォームは通常 input[type="text"] と input[name="password"]
@@ -51,12 +51,7 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
             submit_btn = page.locator('input[type="submit"], button[type="submit"], input[value="ログイン"]').first
             if await submit_btn.count() > 0:
                 await submit_btn.click()
-                await page.wait_for_load_state('domcontentloaded')
-                # ログイン後のページ描画を待つ（翌日ボタンまたはiframe出現）
-                try:
-                    await page.wait_for_selector('input[value="翌日"], iframe', timeout=15000)
-                except Exception:
-                    await asyncio.sleep(3)
+                await page.wait_for_load_state('networkidle')
 
         logger.info(f"ログイン完了: {clinic['name']}")
         return True
@@ -74,21 +69,12 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         移動成功したかどうか
     """
     try:
-        # 「翌日」ボタンの出現を待つ
-        try:
-            await page.wait_for_selector('input[value="翌日"]', timeout=15000)
-        except Exception:
-            pass
-
         # 「翌日」ボタンをクリック（input[value="翌日"]）
         tomorrow_btn = page.locator('input[value="翌日"]').first
         if await tomorrow_btn.count() > 0:
             await tomorrow_btn.click()
-            await page.wait_for_load_state('commit')
-            try:
-                await page.wait_for_selector('iframe', timeout=10000)
-            except Exception:
-                await asyncio.sleep(1)
+            await page.wait_for_load_state('networkidle')
+            await asyncio.sleep(2)  # iframe読み込み待ち
             logger.info("翌日に移動しました")
             return True
 
@@ -96,11 +82,8 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         tomorrow_link = page.locator('a:has-text("翌日"), a:has-text("次の日")').first
         if await tomorrow_link.count() > 0:
             await tomorrow_link.click()
-            await page.wait_for_load_state('commit')
-            try:
-                await page.wait_for_selector('iframe', timeout=5000)
-            except Exception:
-                await asyncio.sleep(1)
+            await page.wait_for_load_state('networkidle')
+            await asyncio.sleep(2)
             logger.info("翌日に移動しました")
             return True
 
@@ -156,19 +139,14 @@ async def get_column_headers_from_main_page(
     disabled_staff = disabled_staff or []
 
     try:
-        # ヘッダー行の全<th>要素を取得（時刻列含む）
-        # 構造: <tr class="d_info"><th>時刻</th><th><a>先生名</a></th>...</tr>
-        # col_idx = テーブル上の実際の列番号（ts_set_newのcol引数と一致させる）
-        all_th_cells = await page.locator('tr.d_info th').all()
+        # ヘッダー行の<th>要素から先生名を取得
+        # 構造: <tr class="d_info"><th><a>先生名</a></th>...</tr>
+        # ts_set_new(col, row) の col はスタッフ列のみの0始まりインデックス
+        # → th a で enumerate すると正しくマッチする
+        header_cells = await page.locator('tr.d_info th a').all()
 
-        for col_idx, th_cell in enumerate(all_th_cells):
-            # <a>タグを含む<th>のみがスタッフ列
-            a_tags = await th_cell.locator('a').all()
-            if not a_tags:
-                logger.debug(f"列{col_idx}: <a>なし（時刻列等）- スキップ")
-                continue
-
-            text = await a_tags[0].inner_text()
+        for idx, cell in enumerate(header_cells):
+            text = await cell.inner_text()
             text = text.strip()
 
             if not text:
@@ -188,9 +166,9 @@ async def get_column_headers_from_main_page(
                 logger.debug(f"除外（無効化）: {text}")
 
             if not excluded:
-                headers[col_idx] = text
+                headers[idx] = text
 
-        logger.info(f"ヘッダー取得完了: {len(headers)}カラム（列番号: {list(headers.keys())}）")
+        logger.info(f"ヘッダー取得完了: {len(headers)}カラム")
 
     except Exception as e:
         logger.error(f"ヘッダー取得エラー: {e}")
