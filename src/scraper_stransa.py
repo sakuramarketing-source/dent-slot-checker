@@ -570,7 +570,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                             const py = Math.floor(rect.y - tableRect.y + rect.height / 2);
                             if (px >= 0 && py >= 0 && px < canvas.width && py < canvas.height) {
                                 const d = ctx.getImageData(px, py, 1, 1).data;
-                                result[rowIdx + '-' + colIdx] = [d[0], d[1], d[2]];
+                                result[px + '_' + py] = [d[0], d[1], d[2]];
                             }
                         });
                     });
@@ -617,8 +617,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     inner_html = cell_data.get('innerHTML', '')
                     child_count = cell_data.get('childCount', 0)
 
-                    # ピクセル色を取得（スクリーンショットベース）
-                    pixel_key = f"{row_idx}-{col_idx}"
+                    # ピクセル色を取得（座標ベースで安定マッチ）
+                    pixel_key = f"{cell_data['px']}_{cell_data['py']}"
                     pixel = pixel_map.get(pixel_key)
 
                     # 診断ログ: 最初の10セルのみ
@@ -642,6 +642,9 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
                     is_cancel = 'cancelled_koma' in cell_class
+                    if is_cancel:
+                        px_str = f"rgb({pixel[0]},{pixel[1]},{pixel[2]})" if pixel else 'none'
+                        logger.info(f"  [CANCEL] [{chair_name}] {time_str}: pixel={px_str}")
 
                     # ② 予約セル: waku アンカーあり → 予約済み（キャンセル枠除く）
                     has_waku = 'waku' in inner_html and child_count >= 1
