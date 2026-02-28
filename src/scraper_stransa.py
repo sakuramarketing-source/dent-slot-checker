@@ -540,13 +540,13 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
         # --- スクリーンショット + Canvas ピクセル判定 ---
         # getComputedStyle が headless Chromium で透明を返すため、
         # スクリーンショットの実際のピクセル色で白(空き)/グレー(ブロック)を判定
-        pixel_map = {}
+        # 重要: セルデータとピクセル色を同一JS評価内で取得（座標ずれ防止）
         try:
             table_locator = page.locator('table').nth(schedule_table_index)
             screenshot_bytes = await table_locator.screenshot()
             b64 = base64.b64encode(screenshot_bytes).decode()
 
-            pixel_map = await page.evaluate('''
+            schedule_data = await page.evaluate('''
                 async ({b64, tableIndex}) => {
                     const table = document.querySelectorAll('table')[tableIndex];
                     const tableRect = table.getBoundingClientRect();
@@ -561,25 +561,56 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0);
 
-                    const result = {};
+                    const scaleX = canvas.width / (tableRect.width || 1);
+                    const scaleY = canvas.height / (tableRect.height || 1);
+
                     const rows = table.querySelectorAll('tr');
-                    Array.from(rows).forEach((row, rowIdx) => {
-                        Array.from(row.querySelectorAll('td, th')).forEach((cell, colIdx) => {
-                            const rect = cell.getBoundingClientRect();
-                            const px = Math.floor(rect.x - tableRect.x + rect.width / 2);
-                            const py = Math.floor(rect.y - tableRect.y + rect.height / 2);
-                            if (px >= 0 && py >= 0 && px < canvas.width && py < canvas.height) {
-                                const d = ctx.getImageData(px, py, 1, 1).data;
-                                result[px + '_' + py] = [d[0], d[1], d[2]];
-                            }
-                        });
-                    });
-                    return result;
+                    let pixelCount = 0;
+                    return {
+                        rowCount: rows.length,
+                        rows: Array.from(rows).map(row => {
+                            const cells = row.querySelectorAll('td, th');
+                            return Array.from(cells).map(cell => {
+                                const child = cell.querySelector('div, span, a');
+                                const childCs = child ? window.getComputedStyle(child) : null;
+                                const rect = cell.getBoundingClientRect();
+                                const cx = rect.x - tableRect.x + rect.width / 2;
+                                const cy = rect.y - tableRect.y + rect.height / 2;
+                                const sx = Math.floor(cx * scaleX);
+                                const sy = Math.floor(cy * scaleY);
+
+                                let pixel = null;
+                                if (sx >= 0 && sy >= 0 && sx < canvas.width && sy < canvas.height) {
+                                    const d = ctx.getImageData(sx, sy, 1, 1).data;
+                                    pixel = [d[0], d[1], d[2]];
+                                    pixelCount++;
+                                }
+
+                                return {
+                                    text: (cell.textContent || '').trim(),
+                                    className: cell.className || '',
+                                    colspan: cell.getAttribute('colspan') || '',
+                                    rowspan: cell.getAttribute('rowspan') || '',
+                                    childBg: childCs ? childCs.backgroundColor : '',
+                                    childCount: cell.children.length,
+                                    innerHTML: cell.innerHTML.substring(0, 200),
+                                    px: Math.floor(cx),
+                                    py: Math.floor(cy),
+                                    pixel: pixel
+                                };
+                            });
+                        })
+                    };
                 }
             ''', {'b64': b64, 'tableIndex': schedule_table_index})
-            logger.info(f"ピクセル判定マップ取得: {len(pixel_map)}セル")
+            # ピクセル取得済みセル数をカウント
+            pixel_count = sum(
+                1 for row in schedule_data['rows']
+                for cell in row if cell.get('pixel')
+            )
+            logger.info(f"統合データ取得: {schedule_data['rowCount']}行, ピクセル取得={pixel_count}セル")
         except Exception as e:
-            logger.warning(f"ピクセル判定失敗（フォールバック: cancelled_komaのみ検出）: {e}")
+            logger.warning(f"ピクセル付きデータ取得失敗（元データで継続）: {e}")
 
         # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
         diag_count = {}  # 診断ログ用カウンタ
@@ -617,9 +648,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     inner_html = cell_data.get('innerHTML', '')
                     child_count = cell_data.get('childCount', 0)
 
-                    # ピクセル色を取得（座標ベースで安定マッチ）
-                    pixel_key = f"{cell_data['px']}_{cell_data['py']}"
-                    pixel = pixel_map.get(pixel_key)
+                    # ピクセル色を取得（統合JSで同時取得済み）
+                    pixel = cell_data.get('pixel')
 
                     # 診断ログ: 最初の10セルのみ
                     diag_cnt = diag_count.get(chair_name, 0)
