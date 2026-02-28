@@ -542,6 +542,11 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
         # スクリーンショットの実際のピクセル色で白(空き)/グレー(ブロック)を判定
         # 重要: セルデータとピクセル色を同一JS評価内で取得（座標ずれ防止）
         try:
+            # viewport高さを拡大してテーブル全体をキャプチャ可能にする
+            # (デフォルト720pxでは午後のセルがスクリーンショット範囲外)
+            await page.set_viewport_size({'width': 1280, 'height': 4000})
+            await asyncio.sleep(0.3)
+
             table_locator = page.locator('table').nth(schedule_table_index)
             screenshot_bytes = await table_locator.screenshot()
             b64 = base64.b64encode(screenshot_bytes).decode()
