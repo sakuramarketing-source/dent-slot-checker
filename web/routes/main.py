@@ -155,6 +155,16 @@ def _apply_web_booking_filter(data):
     return data
 
 
+def _sort_by_clinic_order(data):
+    """結果をCLINIC_ORDERの順序でソート"""
+    from web.routes.staff import CLINIC_ORDER
+    order_map = {name: i for i, name in enumerate(CLINIC_ORDER)}
+    data['results'].sort(
+        key=lambda r: order_map.get(r.get('clinic', ''), 999)
+    )
+    return data
+
+
 @bp.route('/')
 def index():
     """ダッシュボード"""
@@ -164,6 +174,7 @@ def index():
     if result:
         result = _apply_category_classification(result)
         result = _apply_web_booking_filter(result)
+        result = _sort_by_clinic_order(result)
     return render_template('index.html', result=result, min_blocks=min_blocks)
 
 

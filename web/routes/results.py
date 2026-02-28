@@ -112,8 +112,18 @@ def _recalculate_detail(detail, threshold):
 _output_synced = False
 
 
-def _merge_with_latest(new_results, checked_system, output_path_str, check_date):
-    """部分チェック時に他システムの結果を最新ファイルからマージ"""
+def _sort_results_by_clinic_order(data):
+    """結果をCLINIC_ORDERの順序でソート"""
+    from web.routes.staff import CLINIC_ORDER
+    order_map = {name: i for i, name in enumerate(CLINIC_ORDER)}
+    if 'results' in data:
+        data['results'].sort(
+            key=lambda r: order_map.get(r.get('clinic', ''), 999)
+        )
+
+
+def _merge_missing_systems(new_results, systems_present, output_path_str, check_date):
+    """欠落システムの結果を前回ファイルから補完"""
     import glob as _glob
 
     date_str = check_date.replace('-', '')
@@ -130,18 +140,16 @@ def _merge_with_latest(new_results, checked_system, output_path_str, check_date)
     except Exception:
         return None
 
-    # 他システムの結果を保持
-    other_system = [
+    # 欠落システムの結果を前回から取得
+    missing = [
         r for r in prev_data.get('results', [])
-        if r.get('system') != checked_system
+        if r.get('system') not in systems_present
     ]
 
-    if not other_system:
+    if not missing:
         return None
 
-    # 新しい結果 + 他システムの結果をマージ
-    merged_results = new_results + other_system
-    return {'results': merged_results}
+    return {'results': new_results + missing}
 
 
 def get_result_files():
@@ -196,6 +204,9 @@ def get_latest_result():
         settings = load_clinics_settings()
         data = apply_web_booking_filter(data, staff_rules, settings)
 
+        # CLINIC_ORDER順にソート
+        _sort_results_by_clinic_order(data)
+
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -227,6 +238,7 @@ def get_result_by_date(date):
     try:
         with open(latest, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        _sort_results_by_clinic_order(data)
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -476,13 +488,19 @@ def run_check():
                 clinics_with_availability += analysis['summary']['clinics_with_availability']
                 logger_t.info(f"{label}完了: {analysis['summary']}")
 
-            # 部分チェックの場合、他システムの結果をマージ
+            # 欠落システムの結果を前回ファイルから補完
             JST = timezone(timedelta(hours=9))
             check_date = (datetime.now(JST) + timedelta(days=1)).strftime('%Y-%m-%d')
 
-            if system_filter and all_results:
-                merged = _merge_with_latest(
-                    all_results, system_filter, output_path, check_date
+            # マージ前にGCS同期（Cloud Run再起動時の空ディレクトリ対策）
+            from src.gcs_helper import sync_output_from_gcs
+            sync_output_from_gcs(output_path)
+
+            systems_in_results = set(r.get('system') for r in all_results)
+            missing_systems = {'dent-sys', 'stransa'} - systems_in_results
+            if missing_systems and all_results:
+                merged = _merge_missing_systems(
+                    all_results, systems_in_results, output_path, check_date
                 )
                 if merged:
                     all_results = merged['results']
@@ -490,7 +508,7 @@ def run_check():
                     clinics_with_availability = sum(
                         1 for r in all_results if r.get('result', False)
                     )
-                    logger_t.info(f"既存結果とマージ完了: {total_clinics}分院")
+                    logger_t.info(f"欠落システム{missing_systems}を前回結果から補完: {total_clinics}分院")
 
             # 統合結果
             combined = {
