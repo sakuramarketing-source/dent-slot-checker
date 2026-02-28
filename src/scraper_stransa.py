@@ -476,7 +476,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
             pass
 
         # 全テーブルのデータをJS側で一括抽出（Playwright API往復を最小化）
-        # getComputedStyle で実際の背景色を取得（Stransaはスタイルシートで背景色制御）
+        # CSSクラス + 子要素の背景色で空き枠判定
         all_tables_data = await page.evaluate('''() => {
             const tables = document.querySelectorAll('table');
             return Array.from(tables).map(table => {
@@ -485,8 +485,13 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     rowCount: rows.length,
                     rows: Array.from(rows).map(row => {
                         const cells = row.querySelectorAll('td, th');
+                        const trCs = window.getComputedStyle(row);
+                        const rowBg = trCs.backgroundColor || '';
                         return Array.from(cells).map(cell => {
                             const cs = window.getComputedStyle(cell);
+                            // 子要素（div, span）の背景色もチェック
+                            const child = cell.querySelector('div, span, a');
+                            const childCs = child ? window.getComputedStyle(child) : null;
                             return {
                                 text: (cell.textContent || '').trim(),
                                 className: cell.className || '',
@@ -495,6 +500,10 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                 rowspan: cell.getAttribute('rowspan') || '',
                                 bgColor: cs.backgroundColor || '',
                                 bgImage: cs.backgroundImage || '',
+                                childBg: childCs ? childCs.backgroundColor : '',
+                                rowBg: rowBg,
+                                childCount: cell.children.length,
+                                innerHTML: cell.innerHTML.substring(0, 100),
                             };
                         });
                     })
@@ -527,7 +536,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
             return {}
 
         # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
-        # 背景色判定は getComputedStyle ベース（インラインstyleではなく実際の描画色）
+        # CSSクラス(cancelled_koma) + 子要素背景色で空き枠判定
         diag_count = {}  # 診断ログ用カウンタ
 
         for row_data in schedule_data['rows']:
@@ -558,17 +567,21 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     cell_data = row_data[col_idx]
                     cell_text = cell_data['text']
                     cell_clean = cell_text.replace('\xa0', '').replace('\u200b', '').strip()
+                    cell_class = cell_data.get('className', '')
                     bg_color = cell_data.get('bgColor', '').lower()
-                    bg_image = cell_data.get('bgImage', '').lower()
+                    child_bg = cell_data.get('childBg', '').lower()
+                    row_bg = cell_data.get('rowBg', '').lower()
+                    inner_html = cell_data.get('innerHTML', '')
 
                     # 診断ログ: 全セルタイプの背景色サンプル（判定前に出力）
                     diag_cnt = diag_count.get(chair_name, 0)
                     if diag_cnt < 10:
                         logger.info(f"  [DIAG] [{chair_name}] {time_str}: "
                                     f"text='{cell_clean[:15]}' "
-                                    f"bg='{bg_color}' "
-                                    f"bgImg='{bg_image[:50]}' "
-                                    f"class='{cell_data['className']}'")
+                                    f"bg='{bg_color}' childBg='{child_bg}' rowBg='{row_bg}' "
+                                    f"children={cell_data.get('childCount', 0)} "
+                                    f"class='{cell_class}' "
+                                    f"html='{inner_html[:60]}'")
                         diag_count[chair_name] = diag_cnt + 1
 
                     # colspan/rowspan チェック（結合セル = 休憩/閉鎖）
@@ -577,8 +590,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     if cell_data['rowspan'] and cell_data['rowspan'] != '1':
                         continue
 
-                    # ① キャンセル枠: background-image に gradient パターン → 予約可能
-                    is_cancel = bg_image not in ('none', '') and 'gradient' in bg_image
+                    # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
+                    is_cancel = 'cancelled_koma' in cell_class
 
                     # ② テキストあり → 予約済み（キャンセル枠でなければスキップ）
                     if cell_clean and not is_cancel:
@@ -590,13 +603,14 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                     # ④ テキストなしの場合 → 背景色で判定
                     elif not cell_clean:
-                        # 白背景のみ空き枠として採用
-                        is_white = any(w in bg_color for w in [
+                        # 白背景判定: td自体 or 子要素 or 行の背景色
+                        all_bgs = f"{bg_color} {child_bg} {row_bg}"
+                        is_white = any(w in all_bgs for w in [
                             'rgb(255, 255, 255)',
                             'rgba(255, 255, 255',
                         ])
                         if not is_white:
-                            continue  # グレー/その他 → ブロック済み
+                            continue  # グレー/その他/透明 → ブロック済み
 
                     # 全チェックをパス → 空き枠
                     if chair_name not in chair_slots:

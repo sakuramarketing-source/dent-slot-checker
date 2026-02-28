@@ -176,6 +176,11 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-28** 速度最適化: Stransa+dent-sys並列実行（asyncio.gather）、iframeポーリング高速化（0.5秒間隔）、sleep削減
+- **2026-02-28** Stransa精度修正: CSSクラス(cancelled_koma)でキャンセル枠検出、子要素背景色チェック追加
+- **2026-02-28** Stransa空き枠検出: getComputedStyleベース判定に変更（インラインstyle→実際の描画色）
+- **2026-02-28** Stransa速度最適化: domcontentloaded+要素ベース待機、sleep短縮
+- **2026-02-28** dent-sys速度最適化: domcontentloaded+要素ベース待機、evaluate()一括化、Semaphore(3)
 - **2026-02-26** Stransa空き枠修正: スタッフタブ切替を追加（デフォルトのユニット表示→スタッフ表示）、空きセル判定改善
 - **2026-02-25** システム別チェック: ダッシュボードに「全て/dent-sys/Stransa」選択ボタン追加
 - **2026-02-25** dent-sys+Stransa並列スクレイピング: asyncio.gatherで同時実行、CPU 2コア化、min-instances=1

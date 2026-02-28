@@ -82,7 +82,7 @@ async def navigate_to_tomorrow(page: Page) -> bool:
                 await page.wait_for_load_state('domcontentloaded', timeout=30000)
             except Exception:
                 pass
-            await asyncio.sleep(2)  # iframe非同期読み込み待ち
+            await asyncio.sleep(1)  # iframe非同期読み込み待ち
             logger.info("翌日に移動しました")
             return True
 
@@ -94,7 +94,7 @@ async def navigate_to_tomorrow(page: Page) -> bool:
                 await page.wait_for_load_state('domcontentloaded', timeout=30000)
             except Exception:
                 pass
-            await asyncio.sleep(2)  # iframe非同期読み込み待ち
+            await asyncio.sleep(1)  # iframe非同期読み込み待ち
             logger.info("翌日に移動しました")
             return True
 
@@ -116,15 +116,15 @@ async def get_schedule_iframe(page: Page) -> Optional[Frame]:
     """
     try:
         # page.frames から ts_timetable_week を含むURLのフレームを探す
-        # iframe は非同期読み込みのため、最大15秒ポーリングで待機
-        for attempt in range(15):
+        # iframe は非同期読み込みのため、最大10秒ポーリングで待機（0.5秒間隔）
+        for attempt in range(20):
             for frame in page.frames:
                 if 'ts_timetable_week' in frame.url:
                     logger.info(f"スケジュールiframeを取得しました: {frame.url}")
                     return frame
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
 
-        logger.warning("スケジュールiframeが見つかりません（15秒待機後）")
+        logger.warning("スケジュールiframeが見つかりません（10秒待機後）")
         return None
 
     except Exception as e:
