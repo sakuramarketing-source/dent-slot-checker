@@ -547,7 +547,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
             b64 = base64.b64encode(screenshot_bytes).decode()
 
             pixel_map = await page.evaluate('''
-                async (b64, tableIndex) => {
+                async ({b64, tableIndex}) => {
                     const table = document.querySelectorAll('table')[tableIndex];
                     const tableRect = table.getBoundingClientRect();
 
@@ -576,7 +576,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     });
                     return result;
                 }
-            ''', b64, schedule_table_index)
+            ''', {'b64': b64, 'tableIndex': schedule_table_index})
             logger.info(f"ピクセル判定マップ取得: {len(pixel_map)}セル")
         except Exception as e:
             logger.warning(f"ピクセル判定失敗（フォールバック: cancelled_komaのみ検出）: {e}")
