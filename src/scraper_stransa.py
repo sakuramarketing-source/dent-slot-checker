@@ -39,12 +39,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
     clinic_name = clinic.get('name', '不明')
     try:
         logger.info(f"[{clinic_name}] ログイン開始: {clinic['url']}")
-        await page.goto(clinic['url'], timeout=30000)
-        try:
-            await page.wait_for_load_state('networkidle', timeout=10000)
-        except Exception:
-            pass
-        await asyncio.sleep(1)  # SPA読み込み待ち
+        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=30000)
         logger.info(f"[{clinic_name}] ページ読み込み完了: {page.url}")
 
         # メールアドレス入力
@@ -62,10 +57,13 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
         if await login_btn.count() > 0:
             await login_btn.click()
             try:
-                await page.wait_for_load_state('networkidle', timeout=10000)
+                await page.wait_for_selector(
+                    'table, a[href*="/office"], a[href*="/calendar"]',
+                    timeout=30000
+                )
             except Exception:
-                pass
-            await asyncio.sleep(2)  # ログイン後の読み込み待ち
+                logger.warning(f"[{clinic_name}] ログイン後のページ描画タイムアウト")
+            await asyncio.sleep(1)
 
         current_url = page.url
         logger.info(f"[{clinic_name}] ログイン後URL: {current_url}")
@@ -76,10 +74,9 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
 
             # ページ描画を待つ
             try:
-                await page.wait_for_load_state('networkidle', timeout=10000)
+                await page.wait_for_selector('a[href*="/office/"], table', timeout=15000)
             except Exception:
                 pass
-            await asyncio.sleep(1)
 
             # ページ上のオフィスリンクを全取得してログ（失敗しても続行）
             office_names = []
@@ -137,11 +134,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 logger.warning(f"[{clinic_name}] オフィスが見つからない（検索: '{office_display_name}' / '{short_name}'）、URL置換でカレンダーへ")
                 logger.warning(f"[{clinic_name}] ※ clinics.yaml に office_name を設定すると改善できます")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url, timeout=30000)
-                try:
-                    await page.wait_for_load_state('networkidle', timeout=10000)
-                except Exception:
-                    pass
+                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=30000)
                 await asyncio.sleep(1)
 
             current_url = page.url
@@ -151,11 +144,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             if '/office' in current_url:
                 logger.warning(f"[{clinic_name}] まだofficeページ、URL置換でリトライ")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url, timeout=30000)
-                try:
-                    await page.wait_for_load_state('networkidle', timeout=10000)
-                except Exception:
-                    pass
+                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=30000)
                 await asyncio.sleep(1)
                 current_url = page.url
 
@@ -187,7 +176,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                             el = btn.nth(i)
                             if await el.is_visible():
                                 await el.click()
-                                await asyncio.sleep(1.5)
+                                await asyncio.sleep(1)
                                 # テーブル再描画を待つ
                                 try:
                                     await page.wait_for_selector('table', timeout=10000)
@@ -303,7 +292,7 @@ async def navigate_to_tomorrow_stransa(page: Page) -> bool:
         if next_day_clicked:
             # ページリロードを待つ
             try:
-                await page.wait_for_load_state('networkidle', timeout=10000)
+                await page.wait_for_load_state('domcontentloaded', timeout=15000)
             except Exception:
                 pass
             await asyncio.sleep(1)
