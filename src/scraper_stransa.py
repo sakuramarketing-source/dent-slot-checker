@@ -591,6 +591,20 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                     pixelCount++;
                                 }
 
+                                // 斜線パターン検出用: 3×3グリッド(9点)サンプリング
+                                const pixels = [];
+                                const offsets = [0.25, 0.5, 0.75];
+                                for (const ox of offsets) {
+                                    for (const oy of offsets) {
+                                        const gpx = Math.floor((rect.x - tableRect.x + rect.width * ox) * scaleX);
+                                        const gpy = Math.floor((rect.y - tableRect.y + rect.height * oy) * scaleY);
+                                        if (gpx >= 0 && gpy >= 0 && gpx < canvas.width && gpy < canvas.height) {
+                                            const gd = ctx.getImageData(gpx, gpy, 1, 1).data;
+                                            pixels.push([gd[0], gd[1], gd[2]]);
+                                        }
+                                    }
+                                }
+
                                 return {
                                     text: (cell.textContent || '').trim(),
                                     className: cell.className || '',
@@ -601,7 +615,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                     innerHTML: cell.innerHTML.substring(0, 200),
                                     px: Math.floor(cx),
                                     py: Math.floor(cy),
-                                    pixel: pixel
+                                    pixel: pixel,
+                                    pixels: pixels
                                 };
                             });
                         })
@@ -677,26 +692,33 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
                     is_cancel = 'cancelled_koma' in cell_class
-                    if is_cancel:
-                        px_str = f"rgb({pixel[0]},{pixel[1]},{pixel[2]})" if pixel else 'none'
-                        logger.info(f"  [CANCEL] [{chair_name}] {time_str}: pixel={px_str}")
 
                     # ② 予約セル: waku アンカーあり → 予約済み（キャンセル枠除く）
                     has_waku = 'waku' in inner_html and child_count >= 1
                     if has_waku and not is_cancel:
                         continue
 
-                    # ③ キャンセル枠: cancelled_koma + ピンク/赤系ピクセルなら採用
+                    # ③ キャンセル枠: cancelled_koma + 斜線パターン（ピンク+白の混在）なら採用
                     if is_cancel:
-                        if pixel:
-                            r, g, b = pixel
-                            # ピンク/赤系 = 本物のキャンセル枠（R優勢で明るい）
-                            # 名駅 大橋: rgb(255,192,203) → R-G=63, R-B=52 → 合格
-                            # きらり Dr松坂: rgb(47,36,13) → R=47<200 → 不合格
-                            if r > 200 and (r - g) > 30 and (r - b) > 30:
+                        pixels_arr = cell_data.get('pixels', [])
+                        if pixels_arr:
+                            pink_count = sum(
+                                1 for r, g, b in pixels_arr
+                                if r > 200 and g > 150 and b > 150 and (r - g) > 20
+                            )
+                            white_count = sum(
+                                1 for r, g, b in pixels_arr
+                                if r > 240 and g > 240 and b > 240
+                            )
+                            logger.info(
+                                f"  [CANCEL] [{chair_name}] {time_str}: "
+                                f"pink={pink_count}/9 white={white_count}/9"
+                            )
+                            # 斜線 = ピンクと白が両方存在する
+                            if pink_count >= 1 and white_count >= 1:
                                 pass  # → 空き枠として記録
                             else:
-                                continue  # 暗色/予約色 → 覆われている
+                                continue  # ベタ塗り = 覆われている or 別色
                         else:
                             continue  # ピクセル情報なし → 安全側でスキップ
 
