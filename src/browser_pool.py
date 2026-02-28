@@ -16,6 +16,8 @@ _browser = None
 _loop = None
 _thread = None
 _ready = threading.Event()
+_loop_ready = threading.Event()
+_init_error = None
 
 
 def _log(msg):
@@ -29,6 +31,7 @@ def _run_loop():
     global _loop
     _loop = asyncio.new_event_loop()
     asyncio.set_event_loop(_loop)
+    _loop_ready.set()
     _loop.run_forever()
 
 
@@ -53,20 +56,23 @@ async def _start_browser():
 
 def init_browser():
     """Flask起動時に呼び出し: ブラウザを事前起動"""
-    global _thread
+    global _thread, _init_error
     try:
         _log("初期化開始...")
         _thread = threading.Thread(target=_run_loop, daemon=True)
         _thread.start()
 
-        # イベントループが開始されるまで少し待つ
-        time.sleep(0.1)
+        # イベントループが開始されるまで確実に待機
+        if not _loop_ready.wait(timeout=10):
+            raise RuntimeError("イベントループ起動タイムアウト")
 
         future = asyncio.run_coroutine_threadsafe(_start_browser(), _loop)
         future.result(timeout=600)  # 最大10分待つ
         _ready.set()
         _log("初期化完了 - ブラウザ準備OK")
     except Exception as e:
+        _init_error = str(e)
+        _ready.set()  # ブロック解除（エラー状態で）
         _log(f"初期化失敗: {e}")
         import traceback
         traceback.print_exc()
@@ -76,6 +82,8 @@ def get_browser():
     """起動済みブラウザを取得"""
     if not _ready.wait(timeout=600):
         raise RuntimeError("ブラウザプール: 初期化タイムアウト")
+    if _init_error:
+        raise RuntimeError(f"ブラウザプール: 初期化失敗 - {_init_error}")
     return _browser
 
 
