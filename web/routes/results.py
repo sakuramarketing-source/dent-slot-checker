@@ -443,24 +443,25 @@ def run_check():
             total_clinics = 0
             clinics_with_availability = 0
 
-            # dent-sys + Stransa を逐次実行（ブラウザリソース競合回避）
-            # 並列実行(rev00044)でFrame detached/マッピング失敗が多発したため逐次に戻す
+            # dent-sys + Stransa を並列実行（rev00055）
+            # rev00044で逐次に戻した原因はメモリ不足(2GB)→4GBに増量して対処
             async def _scrape_all():
+                import asyncio as _aio
                 from src.scraper_stransa import scrape_all_stransa_clinics
                 from src.scraper import scrape_all_clinics
-                results = []
+                tasks = []
 
-                if stransa_clinics:
+                async def _run_stransa():
                     logger_t.info("=== Stransa スクレイピング開始 ===")
                     try:
                         r = await scrape_all_stransa_clinics(stransa_clinics, browser=browser)
-                        results.append(('stransa', r))
                         logger_t.info(f"=== Stransa 完了: {len(r)}分院 ===")
+                        return ('stransa', r)
                     except Exception as e:
-                        results.append(('stransa', e))
                         logger_t.error(f"Stransa失敗: {e}")
+                        return ('stransa', e)
 
-                if dent_sys_clinics:
+                async def _run_dent_sys():
                     logger_t.info("=== dent-sys スクレイピング開始 ===")
                     try:
                         r = await scrape_all_clinics(
@@ -468,13 +469,19 @@ def run_check():
                             slot_settings['slot_interval_minutes'],
                             True, str(config_path), browser=browser
                         )
-                        results.append(('dent-sys', r))
                         logger_t.info(f"=== dent-sys 完了: {len(r)}分院 ===")
+                        return ('dent-sys', r)
                     except Exception as e:
-                        results.append(('dent-sys', e))
                         logger_t.error(f"dent-sys失敗: {e}")
+                        return ('dent-sys', e)
 
-                return results
+                if stransa_clinics:
+                    tasks.append(_run_stransa())
+                if dent_sys_clinics:
+                    tasks.append(_run_dent_sys())
+
+                gathered = await _aio.gather(*tasks)
+                return list(gathered)
 
             scrape_results = run_async(_scrape_all())
 
