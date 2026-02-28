@@ -176,6 +176,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-02-28** Stransa精度根本修正: スクリーンショット+Canvas APIでピクセル色判定（getComputedStyleが透明を返す問題を回避）、children>0フォールスルーバグ修正
 - **2026-02-28** 安定性修正: 並列実行を逐次に戻し（リソース競合解消）、Stransa判定をwaku/cancelled_komaクラス+childCountベースに改善、CSSロード待機追加
 - **2026-02-28** 速度最適化: Stransa+dent-sys並列実行（asyncio.gather）、iframeポーリング高速化（0.5秒間隔）、sleep削減
 - **2026-02-28** Stransa精度修正: CSSクラス(cancelled_koma)でキャンセル枠検出、子要素背景色チェック追加

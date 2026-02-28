@@ -1,6 +1,7 @@
 """Stransa (Apotool & Box) スクレイピングモジュール"""
 
 import asyncio
+import base64
 import logging
 import os
 from typing import Dict, List, Optional
@@ -479,34 +480,30 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 pass
 
         # 全テーブルのデータをJS側で一括抽出（Playwright API往復を最小化）
-        # CSSクラス + 子要素の背景色で空き枠判定
+        # CSSクラス + 子要素の背景色 + セル座標で空き枠判定
         all_tables_data = await page.evaluate('''() => {
             const tables = document.querySelectorAll('table');
             return Array.from(tables).map(table => {
+                const tableRect = table.getBoundingClientRect();
                 const rows = table.querySelectorAll('tr');
                 return {
                     rowCount: rows.length,
                     rows: Array.from(rows).map(row => {
                         const cells = row.querySelectorAll('td, th');
-                        const trCs = window.getComputedStyle(row);
-                        const rowBg = trCs.backgroundColor || '';
                         return Array.from(cells).map(cell => {
-                            const cs = window.getComputedStyle(cell);
-                            // 子要素（div, span）の背景色もチェック
                             const child = cell.querySelector('div, span, a');
                             const childCs = child ? window.getComputedStyle(child) : null;
+                            const rect = cell.getBoundingClientRect();
                             return {
                                 text: (cell.textContent || '').trim(),
                                 className: cell.className || '',
-                                style: cell.getAttribute('style') || '',
                                 colspan: cell.getAttribute('colspan') || '',
                                 rowspan: cell.getAttribute('rowspan') || '',
-                                bgColor: cs.backgroundColor || '',
-                                bgImage: cs.backgroundImage || '',
                                 childBg: childCs ? childCs.backgroundColor : '',
-                                rowBg: rowBg,
                                 childCount: cell.children.length,
-                                innerHTML: cell.innerHTML.substring(0, 100),
+                                innerHTML: cell.innerHTML.substring(0, 200),
+                                px: Math.floor(rect.x - tableRect.x + rect.width / 2),
+                                py: Math.floor(rect.y - tableRect.y + rect.height / 2),
                             };
                         });
                     })
@@ -516,9 +513,10 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
         # スケジュールテーブルを特定
         schedule_data = None
+        schedule_table_index = -1
         chairs = {}
 
-        for table_data in all_tables_data:
+        for table_idx, table_data in enumerate(all_tables_data):
             if table_data['rowCount'] < 10:
                 continue
 
@@ -530,6 +528,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
             if chairs:
                 schedule_data = table_data
+                schedule_table_index = table_idx
                 logger.info(f"スケジュールテーブル発見: {len(chairs)}カラム, {table_data['rowCount']}行")
                 logger.info(f"  カラム名: {list(chairs.values())}")
                 break
@@ -538,11 +537,54 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
             logger.warning("スケジュールテーブルまたはスタッフカラムが見つかりません")
             return {}
 
+        # --- スクリーンショット + Canvas ピクセル判定 ---
+        # getComputedStyle が headless Chromium で透明を返すため、
+        # スクリーンショットの実際のピクセル色で白(空き)/グレー(ブロック)を判定
+        pixel_map = {}
+        try:
+            table_locator = page.locator('table').nth(schedule_table_index)
+            screenshot_bytes = await table_locator.screenshot()
+            b64 = base64.b64encode(screenshot_bytes).decode()
+
+            pixel_map = await page.evaluate('''
+                async (b64, tableIndex) => {
+                    const table = document.querySelectorAll('table')[tableIndex];
+                    const tableRect = table.getBoundingClientRect();
+
+                    const img = new Image();
+                    img.src = 'data:image/png;base64,' + b64;
+                    await new Promise(r => { img.onload = r; });
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    const result = {};
+                    const rows = table.querySelectorAll('tr');
+                    Array.from(rows).forEach((row, rowIdx) => {
+                        Array.from(row.querySelectorAll('td, th')).forEach((cell, colIdx) => {
+                            const rect = cell.getBoundingClientRect();
+                            const px = Math.floor(rect.x - tableRect.x + rect.width / 2);
+                            const py = Math.floor(rect.y - tableRect.y + rect.height / 2);
+                            if (px >= 0 && py >= 0 && px < canvas.width && py < canvas.height) {
+                                const d = ctx.getImageData(px, py, 1, 1).data;
+                                result[rowIdx + '-' + colIdx] = [d[0], d[1], d[2]];
+                            }
+                        });
+                    });
+                    return result;
+                }
+            ''', b64, schedule_table_index)
+            logger.info(f"ピクセル判定マップ取得: {len(pixel_map)}セル")
+        except Exception as e:
+            logger.warning(f"ピクセル判定失敗（フォールバック: cancelled_komaのみ検出）: {e}")
+
         # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
-        # CSSクラス(cancelled_koma) + 子要素背景色で空き枠判定
         diag_count = {}  # 診断ログ用カウンタ
 
-        for row_data in schedule_data['rows']:
+        for row_idx, row_data in enumerate(schedule_data['rows']):
             if not row_data or len(row_data) < 2:
                 continue
 
@@ -571,20 +613,25 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     cell_text = cell_data['text']
                     cell_clean = cell_text.replace('\xa0', '').replace('\u200b', '').strip()
                     cell_class = cell_data.get('className', '')
-                    bg_color = cell_data.get('bgColor', '').lower()
                     child_bg = cell_data.get('childBg', '').lower()
-                    row_bg = cell_data.get('rowBg', '').lower()
                     inner_html = cell_data.get('innerHTML', '')
+                    child_count = cell_data.get('childCount', 0)
 
-                    # 診断ログ: 全セルタイプの背景色サンプル（判定前に出力）
+                    # ピクセル色を取得（スクリーンショットベース）
+                    pixel_key = f"{row_idx}-{col_idx}"
+                    pixel = pixel_map.get(pixel_key)
+
+                    # 診断ログ: 最初の10セルのみ
                     diag_cnt = diag_count.get(chair_name, 0)
                     if diag_cnt < 10:
+                        px_str = f"rgb({pixel[0]},{pixel[1]},{pixel[2]})" if pixel else 'none'
                         logger.info(f"  [DIAG] [{chair_name}] {time_str}: "
                                     f"text='{cell_clean[:15]}' "
-                                    f"bg='{bg_color}' childBg='{child_bg}' rowBg='{row_bg}' "
-                                    f"children={cell_data.get('childCount', 0)} "
+                                    f"childBg='{child_bg}' "
+                                    f"children={child_count} "
+                                    f"pixel={px_str} "
                                     f"class='{cell_class}' "
-                                    f"html='{inner_html[:60]}'")
+                                    f"html='{inner_html[:80]}'")
                         diag_count[chair_name] = diag_cnt + 1
 
                     # colspan/rowspan チェック（結合セル = 休憩/閉鎖）
@@ -592,8 +639,6 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                         continue
                     if cell_data['rowspan'] and cell_data['rowspan'] != '1':
                         continue
-
-                    child_count = cell_data.get('childCount', 0)
 
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
                     is_cancel = 'cancelled_koma' in cell_class
@@ -611,15 +656,20 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     elif cell_clean:
                         continue
 
-                    # ⑤ テキストなし + 子要素なし → 背景色で空き/ブロック判定
+                    # ⑤ テキストなし + 子要素なし → ピクセル色で空き/ブロック判定
                     elif child_count == 0:
-                        all_bgs = f"{bg_color} {child_bg} {row_bg}"
-                        is_white = any(w in all_bgs for w in [
-                            'rgb(255, 255, 255)',
-                            'rgba(255, 255, 255',
-                        ])
-                        if not is_white:
-                            continue  # 非白（グレー/透明等）→ ブロック済み
+                        if pixel:
+                            r, g, b = pixel
+                            if r > 240 and g > 240 and b > 240:
+                                pass  # 白ピクセル → 空き枠
+                            else:
+                                continue  # グレー/色付き → ブロック
+                        else:
+                            continue  # ピクセル情報なし → 安全側でスキップ
+
+                    # ⑥ children>0 で waku/cancel/text なし → ブロック（gray div等）
+                    else:
+                        continue
 
                     # 全チェックをパス → 空き枠
                     if chair_name not in chair_slots:
