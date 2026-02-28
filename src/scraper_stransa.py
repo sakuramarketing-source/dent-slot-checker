@@ -469,11 +469,14 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
     chair_slots: Dict[str, List[int]] = {}
 
     try:
-        # ページ安定化
+        # ページ安定化 + CSS読み込み待機（背景色取得のため load まで待つ）
         try:
-            await page.wait_for_load_state('domcontentloaded', timeout=10000)
+            await page.wait_for_load_state('load', timeout=15000)
         except Exception:
-            pass
+            try:
+                await page.wait_for_load_state('domcontentloaded', timeout=5000)
+            except Exception:
+                pass
 
         # 全テーブルのデータをJS側で一括抽出（Playwright API往復を最小化）
         # CSSクラス + 子要素の背景色で空き枠判定
@@ -590,27 +593,33 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     if cell_data['rowspan'] and cell_data['rowspan'] != '1':
                         continue
 
+                    child_count = cell_data.get('childCount', 0)
+
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
                     is_cancel = 'cancelled_koma' in cell_class
 
-                    # ② テキストあり → 予約済み（キャンセル枠でなければスキップ）
-                    if cell_clean and not is_cancel:
+                    # ② 予約セル: waku アンカーあり → 予約済み（キャンセル枠除く）
+                    has_waku = 'waku' in inner_html and child_count >= 1
+                    if has_waku and not is_cancel:
                         continue
 
                     # ③ キャンセル枠なら採用
                     if is_cancel:
                         pass  # → 空き枠として記録
 
-                    # ④ テキストなしの場合 → 背景色で判定
-                    elif not cell_clean:
-                        # 白背景判定: td自体 or 子要素 or 行の背景色
+                    # ④ テキストあり（waku以外の予約テキスト）→ スキップ
+                    elif cell_clean:
+                        continue
+
+                    # ⑤ テキストなし + 子要素なし → 背景色で空き/ブロック判定
+                    elif child_count == 0:
                         all_bgs = f"{bg_color} {child_bg} {row_bg}"
                         is_white = any(w in all_bgs for w in [
                             'rgb(255, 255, 255)',
                             'rgba(255, 255, 255',
                         ])
                         if not is_white:
-                            continue  # グレー/その他/透明 → ブロック済み
+                            continue  # 非白（グレー/透明等）→ ブロック済み
 
                     # 全チェックをパス → 空き枠
                     if chair_name not in chair_slots:

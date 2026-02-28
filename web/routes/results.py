@@ -431,41 +431,37 @@ def run_check():
             total_clinics = 0
             clinics_with_availability = 0
 
-            # dent-sys + Stransa を並列実行（asyncio.gather）
-            # Sem(3)+Sem(4)=最大7ページ同時、Cloud Run 2Giで安定動作
+            # dent-sys + Stransa を逐次実行（ブラウザリソース競合回避）
+            # 並列実行(rev00044)でFrame detached/マッピング失敗が多発したため逐次に戻す
             async def _scrape_all():
-                import asyncio as _asyncio
                 from src.scraper_stransa import scrape_all_stransa_clinics
                 from src.scraper import scrape_all_clinics
-
-                tasks = []
-                task_labels = []
+                results = []
 
                 if stransa_clinics:
                     logger_t.info("=== Stransa スクレイピング開始 ===")
-                    tasks.append(scrape_all_stransa_clinics(stransa_clinics, browser=browser))
-                    task_labels.append('stransa')
+                    try:
+                        r = await scrape_all_stransa_clinics(stransa_clinics, browser=browser)
+                        results.append(('stransa', r))
+                        logger_t.info(f"=== Stransa 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('stransa', e))
+                        logger_t.error(f"Stransa失敗: {e}")
 
                 if dent_sys_clinics:
                     logger_t.info("=== dent-sys スクレイピング開始 ===")
-                    tasks.append(scrape_all_clinics(
-                        dent_sys_clinics, exclude_patterns,
-                        slot_settings['slot_interval_minutes'],
-                        True, str(config_path), browser=browser
-                    ))
-                    task_labels.append('dent-sys')
+                    try:
+                        r = await scrape_all_clinics(
+                            dent_sys_clinics, exclude_patterns,
+                            slot_settings['slot_interval_minutes'],
+                            True, str(config_path), browser=browser
+                        )
+                        results.append(('dent-sys', r))
+                        logger_t.info(f"=== dent-sys 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('dent-sys', e))
+                        logger_t.error(f"dent-sys失敗: {e}")
 
-                if not tasks:
-                    return []
-
-                raw_results = await _asyncio.gather(*tasks, return_exceptions=True)
-                results = []
-                for label, result in zip(task_labels, raw_results):
-                    if isinstance(result, Exception):
-                        logger_t.error(f"{label}失敗: {result}")
-                    else:
-                        logger_t.info(f"=== {label} 完了: {len(result)}分院 ===")
-                    results.append((label, result))
                 return results
 
             scrape_results = run_async(_scrape_all())
