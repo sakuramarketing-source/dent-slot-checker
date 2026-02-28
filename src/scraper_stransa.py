@@ -623,7 +623,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                     # 診断ログ: 最初の10セルのみ
                     diag_cnt = diag_count.get(chair_name, 0)
-                    if diag_cnt < 10:
+                    if diag_cnt < 20:
                         px_str = f"rgb({pixel[0]},{pixel[1]},{pixel[2]})" if pixel else 'none'
                         logger.info(f"  [DIAG] [{chair_name}] {time_str}: "
                                     f"text='{cell_clean[:15]}' "
@@ -648,9 +648,19 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     if has_waku and not is_cancel:
                         continue
 
-                    # ③ キャンセル枠なら採用
+                    # ③ キャンセル枠: cancelled_koma + ピンク/赤系ピクセルなら採用
                     if is_cancel:
-                        pass  # → 空き枠として記録
+                        if pixel:
+                            r, g, b = pixel
+                            # ピンク/赤系 = 本物のキャンセル枠（R優勢で明るい）
+                            # 名駅 大橋: rgb(255,192,203) → R-G=63, R-B=52 → 合格
+                            # きらり Dr松坂: rgb(47,36,13) → R=47<200 → 不合格
+                            if r > 200 and (r - g) > 30 and (r - b) > 30:
+                                pass  # → 空き枠として記録
+                            else:
+                                continue  # 暗色/予約色 → 覆われている
+                        else:
+                            continue  # ピクセル情報なし → 安全側でスキップ
 
                     # ④ テキストあり（waku以外の予約テキスト）→ スキップ
                     elif cell_clean:
