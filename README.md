@@ -176,6 +176,8 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-03-02** キャンセル枠改善: cancelled_koma吹き出しのみケースも空き枠として採用（斜線パターン必須を撤廃）、カテゴリ分類にサフィックス除去追加（DH小森(1)→DH小森でhygienistマッチ）
+- **2026-03-02** 精度修正: Stransaテーブル選択（最多スタッフ列）、is_staff_column()サフィックス(1)/(2)対応、未使用列フィルタ（予約ゼロ列除外）、web_bookingサフィックス除去、CJK互換漢字(﨑)対応、Cloud Run CPU throttling解消(--no-cpu-throttling)
 - **2026-03-02** 並列実行を逐次に戻す: ページ描画タイムアウト→スタッフタブ未検出→web_bookingフィルタで全滅する精度問題を修正
 - **2026-02-28** 速度改善: Stransa+dent-sys並列実行を復活（asyncio.gather）、メモリ4GBに増量でFrame detached解消
 - **2026-02-28** 結果マージ修正: システム別チェック時に他システムの結果が消える問題を修正（GCS同期追加+マージ条件改善）、医院表示順をCLINIC_ORDER準拠に
