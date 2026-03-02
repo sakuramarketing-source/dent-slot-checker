@@ -716,9 +716,9 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     # ピクセル色を取得（統合JSで同時取得済み）
                     pixel = cell_data.get('pixel')
 
-                    # 診断ログ: 最初の10セルのみ
+                    # 診断ログ: 最初の3セルのみ
                     diag_cnt = diag_count.get(chair_name, 0)
-                    if diag_cnt < 20:
+                    if diag_cnt < 3:
                         px_str = f"rgb({pixel[0]},{pixel[1]},{pixel[2]})" if pixel else 'none'
                         logger.info(f"  [DIAG] [{chair_name}] {time_str}: "
                                     f"text='{cell_clean[:15]}' "
