@@ -441,18 +441,44 @@ def is_staff_column(text: str) -> bool:
     if text in known_columns:
         return True
 
+    # TC(1), TC(2), TC矯正 などの既知カラム+サフィックス
+    import re
+    for kc in ['TC', 'SP', '急患']:
+        if text.startswith(kc):
+            return True
+
     # スタッフ名パターン（/で区切られた名前）: 上手/中村, 赤木/藤森
     if '/' in text and 4 <= len(text) <= 12:
         return True
 
+    # 漢字名+アルファベットサフィックス: 阪上B, 大沼B
+    if re.match(r'^[\u4e00-\u9fff]{2,4}[A-Z]$', text):
+        return True
+
+    # 漢字名+(括弧付き名前): 伊藤(楓), 伊藤(允)
+    if re.match(r'^[\u4e00-\u9fff]{2,4}\([^\d]+\)$', text):
+        return True
+
     # 漢字2-4文字で既知のパターン以外のスタッフ名
     # これは最後の手段として、明確にスタッフ名っぽいものだけ
-    import re
+    # (1), (2) サフィックスを除去してから判定
+    base_text = re.sub(r'\(\d+\)$', '', text).strip()
     # スタッフ名: 漢字のみ2-4文字（ただし一般的な単語は除外）
-    if re.match(r'^[\u4e00-\u9fff]{2,4}$', text):
-        common_words = ['診療', '予約', '患者', '連絡', '掲示', '一覧', '追加', '削除', '設定', '表示', '非表示']
-        if text not in common_words:
+    if re.match(r'^[\u4e00-\u9fff]{2,4}$', base_text):
+        common_words = ['診療', '予約', '患者', '連絡', '掲示', '一覧', '追加', '削除', '設定', '表示', '非表示', 'キャンセル']
+        if base_text not in common_words:
             return True
+
+    # スタッフ名(数字) パターン: 市位(1), 担当医指定なし(1) など
+    if re.match(r'^.+\(\d+\)$', text):
+        name_part = re.sub(r'\(\d+\)$', '', text).strip()
+        # 「担当」を含む場合もスタッフ扱い
+        if '担当' in name_part or '指定' in name_part:
+            return True
+        # ひらがな/カタカナ名: 中山, 小島 etc. (漢字2-4文字+サフィックス)
+        if re.match(r'^[\u4e00-\u9fff]{2,4}$', name_part):
+            if name_part not in common_words:
+                return True
 
     return False
 
