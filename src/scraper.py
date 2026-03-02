@@ -633,7 +633,7 @@ async def scrape_all_clinics(
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
 
-    sem = asyncio.Semaphore(3)  # 3並列（dent-sysサーバー負荷軽減）
+    sem = asyncio.Semaphore(2)  # 2並列（3並列だとPage.gotoタイムアウト頻発のため削減）
 
     async def _scrape_one(clinic, disabled_staff):
         async with sem:
