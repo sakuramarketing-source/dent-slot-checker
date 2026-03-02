@@ -236,6 +236,22 @@ async def build_row_time_mapping(frame: Frame, slot_interval: int = 5) -> Dict[i
     row_idx = 0
 
     try:
+        # テーブル構造の診断ログ（AM/PM未検出の調査用）
+        table_diag = await frame.evaluate('''() => {
+            const tables = document.querySelectorAll('table');
+            return Array.from(tables).map((t, i) => ({
+                index: i,
+                rows: t.rows.length,
+                cols: t.rows[0] ? t.rows[0].cells.length : 0,
+                firstCellText: (t.rows[0]?.cells[0]?.textContent || '').trim().substring(0, 20),
+                lastRowFirstCell: t.rows.length > 0 ? (t.rows[t.rows.length-1]?.cells[0]?.textContent || '').trim().substring(0, 20) : '',
+                hasNewLinks: t.querySelectorAll('a').length
+            }));
+        }''')
+        logger.info(f"iframe内テーブル構造: {len(table_diag)}テーブル")
+        for td in table_diag:
+            logger.info(f"  テーブル{td['index']}: {td['rows']}行×{td['cols']}列, 先頭='{td['firstCellText']}', 末尾='{td['lastRowFirstCell']}', リンク数={td['hasNewLinks']}")
+
         # JS側で全行の最初のセルテキストとリンク有無を一括取得
         rows_data = await frame.evaluate('''() => {
             const rows = document.querySelectorAll('table tr');
@@ -360,6 +376,16 @@ async def parse_schedule_from_iframe(
             return Array.from(links).map(a => a.getAttribute('href')).filter(h => h);
         }''')
         logger.info(f"「新」リンク数: {len(link_hrefs)}")
+
+        # 診断: ts_set_newのrow範囲をログ出力（AM/PM検出確認用）
+        all_row_indices = []
+        for h in link_hrefs:
+            m = re.search(r'ts_set_new\(\d+,\s*(\d+)\)', h)
+            if m:
+                all_row_indices.append(int(m.group(1)))
+        if all_row_indices:
+            logger.info(f"「新」リンクrow範囲: min={min(all_row_indices)}, max={max(all_row_indices)}, "
+                        f"row_time_map範囲: {min(row_time_map.keys()) if row_time_map else 'N/A'}-{max(row_time_map.keys()) if row_time_map else 'N/A'}")
 
         unmapped_cols = set()
         unmapped_rows = set()

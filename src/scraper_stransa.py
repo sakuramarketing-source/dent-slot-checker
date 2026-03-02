@@ -511,27 +511,40 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
             });
         }''')
 
-        # スケジュールテーブルを特定
+        # スケジュールテーブルを特定（最もスタッフカラム数が多いテーブルを選択）
+        # 注意: breakで最初のテーブルを選ぶと、サマリーテーブルを誤選択する場合がある
         schedule_data = None
         schedule_table_index = -1
         chairs = {}
+
+        best_table = None
+        best_chairs = {}
+        best_table_idx = -1
 
         for table_idx, table_data in enumerate(all_tables_data):
             if table_data['rowCount'] < 10:
                 continue
 
+            current_chairs = {}
             first_row = table_data['rows'][0] if table_data['rows'] else []
             for i, cell_data in enumerate(first_row):
                 text = cell_data['text'].strip()
                 if is_staff_column(text):
-                    chairs[i] = text
+                    current_chairs[i] = text
 
-            if chairs:
-                schedule_data = table_data
-                schedule_table_index = table_idx
-                logger.info(f"スケジュールテーブル発見: {len(chairs)}カラム, {table_data['rowCount']}行")
-                logger.info(f"  カラム名: {list(chairs.values())}")
-                break
+            if current_chairs:
+                logger.info(f"テーブル{table_idx}: {len(current_chairs)}スタッフカラム, {table_data['rowCount']}行 → {list(current_chairs.values())}")
+                if len(current_chairs) > len(best_chairs):
+                    best_chairs = current_chairs
+                    best_table = table_data
+                    best_table_idx = table_idx
+
+        if best_table:
+            chairs = best_chairs
+            schedule_data = best_table
+            schedule_table_index = best_table_idx
+            logger.info(f"スケジュールテーブル選択: テーブル{best_table_idx}, {len(chairs)}カラム, {best_table['rowCount']}行")
+            logger.info(f"  カラム名: {list(chairs.values())}")
 
         if not schedule_data or not chairs:
             logger.warning("スケジュールテーブルまたはスタッフカラムが見つかりません")
