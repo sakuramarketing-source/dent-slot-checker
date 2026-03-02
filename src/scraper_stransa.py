@@ -678,6 +678,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
         # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
         diag_count = {}  # 診断ログ用カウンタ
+        checked_cells_per_col: Dict[str, int] = {}  # カラムごとのチェック済みセル数
 
         for row_idx, row_data in enumerate(schedule_data['rows']):
             if not row_data or len(row_data) < 2:
@@ -733,6 +734,9 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                         continue
                     if cell_data['rowspan'] and cell_data['rowspan'] != '1':
                         continue
+
+                    # このセルは評価対象（未使用列検出用カウンタ）
+                    checked_cells_per_col[chair_name] = checked_cells_per_col.get(chair_name, 0) + 1
 
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
                     is_cancel = 'cancelled_koma' in cell_class
@@ -793,21 +797,16 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 except Exception:
                     continue
 
-        # テーブルの全時間行数をカウント（未使用列検出用）
-        total_time_rows = sum(
-            1 for row_data in schedule_data['rows']
-            if row_data and len(row_data) >= 2 and ':' in row_data[0]['text'].split('\n')[0].strip()
-        )
-
-        # 未使用列フィルタ: 全スロットが空き = 未使用のスケジュール分割列
+        # 未使用列フィルタ: 全チェック対象セルが空き = 未使用のスケジュール分割列
         # (2)列など、予約が一切入っていない列は実際の空き枠ではない
         unused_columns = []
         for chair_name, slots in list(chair_slots.items()):
-            if len(slots) >= total_time_rows and total_time_rows > 0:
-                unused_columns.append(chair_name)
+            checked = checked_cells_per_col.get(chair_name, 0)
+            if checked > 0 and len(slots) >= checked:
+                unused_columns.append(f"{chair_name}({len(slots)}/{checked})")
                 del chair_slots[chair_name]
         if unused_columns:
-            logger.info(f"  未使用列を除外（全{total_time_rows}スロット空き）: {unused_columns}")
+            logger.info(f"  未使用列を除外（全セル空き）: {unused_columns}")
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
