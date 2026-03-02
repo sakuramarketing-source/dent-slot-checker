@@ -35,7 +35,7 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
         ログイン成功したかどうか
     """
     try:
-        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=30000)
+        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=60000)
 
         # ログインフォームの存在確認
         # dent-sys.net のログインフォームは通常 input[type="text"] と input[name="password"]
@@ -53,7 +53,7 @@ async def login(page: Page, clinic: Dict[str, str]) -> bool:
                 try:
                     await page.wait_for_selector(
                         'input[value="翌日"], tr.d_info, iframe[src*="timetable"]',
-                        timeout=30000
+                        timeout=60000
                     )
                 except Exception:
                     logger.warning(f"スケジュールページの描画待ちタイムアウト: {clinic['name']}")
@@ -79,7 +79,7 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         if await tomorrow_btn.count() > 0:
             await tomorrow_btn.click()
             try:
-                await page.wait_for_load_state('domcontentloaded', timeout=30000)
+                await page.wait_for_load_state('domcontentloaded', timeout=60000)
             except Exception:
                 pass
             await asyncio.sleep(1)  # iframe非同期読み込み待ち
@@ -91,7 +91,7 @@ async def navigate_to_tomorrow(page: Page) -> bool:
         if await tomorrow_link.count() > 0:
             await tomorrow_link.click()
             try:
-                await page.wait_for_load_state('domcontentloaded', timeout=30000)
+                await page.wait_for_load_state('domcontentloaded', timeout=60000)
             except Exception:
                 pass
             await asyncio.sleep(1)  # iframe非同期読み込み待ち
@@ -633,7 +633,7 @@ async def scrape_all_clinics(
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
 
-    sem = asyncio.Semaphore(2)  # 2並列（3並列だとPage.gotoタイムアウト頻発のため削減）
+    sem = asyncio.Semaphore(1)  # 1（逐次）: Cloud Runでのタイムアウト対策
 
     async def _scrape_one(clinic, disabled_staff):
         async with sem:

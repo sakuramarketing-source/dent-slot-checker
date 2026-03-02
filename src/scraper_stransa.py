@@ -40,7 +40,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
     clinic_name = clinic.get('name', '不明')
     try:
         logger.info(f"[{clinic_name}] ログイン開始: {clinic['url']}")
-        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=30000)
+        await page.goto(clinic['url'], wait_until='domcontentloaded', timeout=60000)
         logger.info(f"[{clinic_name}] ページ読み込み完了: {page.url}")
 
         # メールアドレス入力
@@ -135,7 +135,7 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
                 logger.warning(f"[{clinic_name}] オフィスが見つからない（検索: '{office_display_name}' / '{short_name}'）、URL置換でカレンダーへ")
                 logger.warning(f"[{clinic_name}] ※ clinics.yaml に office_name を設定すると改善できます")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=30000)
+                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=60000)
                 await asyncio.sleep(1)
 
             current_url = page.url
@@ -145,14 +145,14 @@ async def login_stransa(page: Page, clinic: Dict[str, str]) -> bool:
             if '/office' in current_url:
                 logger.warning(f"[{clinic_name}] まだofficeページ、URL置換でリトライ")
                 calendar_url = current_url.replace('/office', '/calendar/')
-                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=30000)
+                await page.goto(calendar_url, wait_until='domcontentloaded', timeout=60000)
                 await asyncio.sleep(1)
                 current_url = page.url
 
         if '/calendar/' in current_url:
             # SPAのカレンダー描画を待つ
             try:
-                await page.wait_for_selector('table', timeout=30000)
+                await page.wait_for_selector('table', timeout=60000)
             except Exception:
                 await asyncio.sleep(5)
 
@@ -832,7 +832,7 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
-    sem = asyncio.Semaphore(2)  # 2並列（4並列だとPage.gotoタイムアウト頻発のため削減）
+    sem = asyncio.Semaphore(1)  # 1（逐次）: Cloud Runでのタイムアウト対策
 
     stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
     logger.info(f"Stransa対象分院数: {len(stransa_clinics)}")

@@ -23,7 +23,7 @@ _check_started_at = None
 _check_thread = None
 _check_result = None  # None=未実行, True=成功, False=失敗
 _check_error = None
-_CHECK_TIMEOUT = 600  # 10分タイムアウト
+_CHECK_TIMEOUT = 1200  # 20分タイムアウト（Semaphore=1逐次実行対応）
 
 
 def load_staff_rules():
