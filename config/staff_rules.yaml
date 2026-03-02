@@ -268,6 +268,7 @@ staff_by_clinic:
     - 松澤
     - 井上
     - 出井
+    - ＷＥＢ初診
     hygienists:
     - 宮本
     - 馬渕
@@ -288,6 +289,7 @@ staff_by_clinic:
     - 久保
     - 中村
     - 上岡
+    - ＷＥＢ初診
   ヒロデンタルクリニック:
     all_staff:
     - 上手
@@ -413,6 +415,7 @@ staff_by_clinic:
     - 大沼
     - Dr.希望なし
     - 日比
+    - WEB
     hygienists:
     - 中村
     - 伊藤(楓)
@@ -425,6 +428,7 @@ staff_by_clinic:
     - 石川
     - 長瀬
     - 吉田
+    - WEB
     slot_threshold:
       hygienist: 60
     web_booking:
@@ -440,6 +444,8 @@ staff_by_clinic:
     - 石川
     - 松本
     - 伊藤(楓)
+    - WEB
+    - 吉田
   日進赤池たんぽぽ歯科:
     all_staff:
     - ＳＰ/急患
