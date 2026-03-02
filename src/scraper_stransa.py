@@ -678,7 +678,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
         # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
         diag_count = {}  # 診断ログ用カウンタ
-        checked_cells_per_col: Dict[str, int] = {}  # カラムごとのチェック済みセル数
+        booked_cols: set = set()  # 予約が1つでもあるカラム
 
         for row_idx, row_data in enumerate(schedule_data['rows']):
             if not row_data or len(row_data) < 2:
@@ -735,15 +735,13 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     if cell_data['rowspan'] and cell_data['rowspan'] != '1':
                         continue
 
-                    # このセルは評価対象（未使用列検出用カウンタ）
-                    checked_cells_per_col[chair_name] = checked_cells_per_col.get(chair_name, 0) + 1
-
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
                     is_cancel = 'cancelled_koma' in cell_class
 
                     # ② 予約セル: waku アンカーあり → 予約済み（キャンセル枠除く）
                     has_waku = 'waku' in inner_html and child_count >= 1
                     if has_waku and not is_cancel:
+                        booked_cols.add(chair_name)  # このカラムに予約あり
                         continue
 
                     # ③ キャンセル枠: cancelled_koma + 斜線パターン（ピンク+白の混在）なら採用
@@ -772,6 +770,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                     # ④ テキストあり（waku以外の予約テキスト）→ スキップ
                     elif cell_clean:
+                        booked_cols.add(chair_name)  # このカラムに予約あり
                         continue
 
                     # ⑤ テキストなし + 子要素なし → ピクセル色で空き/ブロック判定
@@ -797,16 +796,15 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 except Exception:
                     continue
 
-        # 未使用列フィルタ: 全チェック対象セルが空き = 未使用のスケジュール分割列
+        # 未使用列フィルタ: 予約（waku/テキスト）が1つもない列 = 未使用
         # (2)列など、予約が一切入っていない列は実際の空き枠ではない
         unused_columns = []
-        for chair_name, slots in list(chair_slots.items()):
-            checked = checked_cells_per_col.get(chair_name, 0)
-            if checked > 0 and len(slots) >= checked:
-                unused_columns.append(f"{chair_name}({len(slots)}/{checked})")
+        for chair_name in list(chair_slots.keys()):
+            if chair_name not in booked_cols:
+                unused_columns.append(f"{chair_name}({len(chair_slots[chair_name])}slots)")
                 del chair_slots[chair_name]
         if unused_columns:
-            logger.info(f"  未使用列を除外（全セル空き）: {unused_columns}")
+            logger.info(f"  未使用列を除外（予約なし）: {unused_columns}")
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
