@@ -137,9 +137,14 @@ def _apply_web_booking_filter(data):
             continue
 
         web_booking_set = set(web_booking)
+        # Stransa のスタッフ名は (1), (2) サフィックス付きの場合がある
+        # 例: DH小森(1), DH山本真(2) → DH小森, DH山本真 でマッチ
+        import re
+        def _strip_suffix(name):
+            return re.sub(r'\(\d+\)$', '', name).strip()
         filtered = [
             d for d in result.get('details', [])
-            if d.get('doctor', '') in web_booking_set
+            if d.get('doctor', '') in web_booking_set or _strip_suffix(d.get('doctor', '')) in web_booking_set
         ]
         result['details'] = filtered
         total = sum(d.get('blocks', 0) for d in filtered)

@@ -534,6 +534,11 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
             if current_chairs:
                 logger.info(f"テーブル{table_idx}: {len(current_chairs)}スタッフカラム, {table_data['rowCount']}行 → {list(current_chairs.values())}")
+                # 診断: ヘッダー行の全セルテキスト（未認識カラムの特定用）
+                all_texts = [cell_data['text'].strip()[:20] for cell_data in first_row]
+                non_staff = [(i, t) for i, t in enumerate(all_texts) if t and i not in current_chairs]
+                if non_staff:
+                    logger.info(f"  非スタッフカラム: {non_staff[:15]}")
                 if len(current_chairs) > len(best_chairs):
                     best_chairs = current_chairs
                     best_table = table_data
