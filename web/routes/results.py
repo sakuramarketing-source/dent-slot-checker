@@ -285,19 +285,25 @@ def get_result_with_categories():
             orthodontist_blocks = 0
             other_blocks = 0
 
+            # Stransa (1)/(2) サフィックス除去用
+            import re
+            def _strip_suffix(name):
+                return re.sub(r'\(\d+\)$', '', name).strip()
+
             for detail in result.get('details', []):
                 staff_name = detail.get('doctor', '')
+                base_name = _strip_suffix(staff_name)
 
                 # 職種分類と再計算（矯正が最優先）
-                if staff_name in orthodontists:
+                if staff_name in orthodontists or base_name in orthodontists:
                     detail['category'] = 'orthodontist'
                     _recalculate_detail(detail, ortho_threshold)
                     detail.setdefault('threshold_minutes', ortho_threshold)
-                elif staff_name in doctors:
+                elif staff_name in doctors or base_name in doctors:
                     detail['category'] = 'doctor'
                     _recalculate_detail(detail, dr_threshold)
                     detail.setdefault('threshold_minutes', dr_threshold)
-                elif staff_name in hygienists:
+                elif staff_name in hygienists or base_name in hygienists:
                     detail['category'] = 'hygienist'
                     _recalculate_detail(detail, dh_threshold)
                     detail.setdefault('threshold_minutes', dh_threshold)
@@ -317,7 +323,7 @@ def get_result_with_categories():
                     other_blocks += blocks
 
                 # メモを追加
-                detail['memo'] = memos.get(staff_name, '')
+                detail['memo'] = memos.get(staff_name, '') or memos.get(base_name, '')
 
             # 職種別集計を追加
             result['category_summary'] = {

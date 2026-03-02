@@ -744,7 +744,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                         booked_cols.add(chair_name)  # このカラムに予約あり
                         continue
 
-                    # ③ キャンセル枠: cancelled_koma + 斜線パターン（ピンク+白の混在）なら採用
+                    # ③ キャンセル枠: cancelled_koma CSSクラス = Stransaのキャンセル枠マーカー
+                    # 斜線パターン（赤+白）でも吹き出しのみ（白背景）でも空き枠
                     if is_cancel:
                         pixels_arr = cell_data.get('pixels', [])
                         if pixels_arr:
@@ -756,17 +757,12 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                 1 for r, g, b in pixels_arr
                                 if r > 240 and g > 240 and b > 240
                             )
+                            pattern = 'stripe' if (pink_count >= 1 and white_count >= 1) else 'bubble'
                             logger.info(
                                 f"  [CANCEL] [{chair_name}] {time_str}: "
-                                f"pink={pink_count}/9 white={white_count}/9"
+                                f"pink={pink_count}/9 white={white_count}/9 → {pattern}"
                             )
-                            # 斜線 = ピンクと白が両方存在する
-                            if pink_count >= 1 and white_count >= 1:
-                                pass  # → 空き枠として記録
-                            else:
-                                continue  # ベタ塗り = 覆われている or 別色
-                        else:
-                            continue  # ピクセル情報なし → 安全側でスキップ
+                        pass  # → 空き枠として記録（斜線/吹き出し問わず）
 
                     # ④ テキストあり（waku以外の予約テキスト）→ スキップ
                     elif cell_clean:

@@ -71,6 +71,12 @@ def _recalculate_detail(detail, threshold):
 
 def _apply_category_classification(data):
     """スタッフに職種分類(doctor/hygienist)と閾値情報を付与"""
+    import re
+
+    def _strip_suffix(name):
+        """Stransa (1)/(2) サフィックスを除去"""
+        return re.sub(r'\(\d+\)$', '', name).strip()
+
     staff_rules = _load_staff_rules()
     staff_by_clinic = staff_rules.get('staff_by_clinic', {})
 
@@ -86,11 +92,12 @@ def _apply_category_classification(data):
         dr_blocks = hyg_blocks = other_blocks = 0
         for detail in result.get('details', []):
             staff_name = detail.get('doctor', '')
-            if staff_name in doctors:
+            base_name = _strip_suffix(staff_name)
+            if staff_name in doctors or base_name in doctors:
                 detail['category'] = 'doctor'
                 _recalculate_detail(detail, dr_threshold)
                 detail.setdefault('threshold_minutes', dr_threshold)
-            elif staff_name in hygienists:
+            elif staff_name in hygienists or base_name in hygienists:
                 detail['category'] = 'hygienist'
                 _recalculate_detail(detail, dh_threshold)
                 detail.setdefault('threshold_minutes', dh_threshold)
