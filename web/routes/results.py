@@ -73,9 +73,13 @@ def apply_web_booking_filter(data, staff_rules, settings=None):
         web_booking_set = set(web_booking)
 
         # web_bookingリストのスタッフのみに絞る
+        # Stransa のスタッフ名は (1), (2) サフィックス付きの場合がある
+        import re
+        def _strip_suffix(name):
+            return re.sub(r'\(\d+\)$', '', name).strip()
         filtered_details = [
             d for d in result.get('details', [])
-            if d.get('doctor', '') in web_booking_set
+            if d.get('doctor', '') in web_booking_set or _strip_suffix(d.get('doctor', '')) in web_booking_set
         ]
         result['details'] = filtered_details
 

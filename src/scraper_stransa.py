@@ -452,11 +452,11 @@ def is_staff_column(text: str) -> bool:
         return True
 
     # 漢字名+アルファベットサフィックス: 阪上B, 大沼B
-    if re.match(r'^[\u4e00-\u9fff]{2,4}[A-Z]$', text):
+    if re.match(r'^[\u4e00-\u9fff\uf900-\ufaff]{2,4}[A-Z]$', text):
         return True
 
     # 漢字名+(括弧付き名前): 伊藤(楓), 伊藤(允)
-    if re.match(r'^[\u4e00-\u9fff]{2,4}\([^\d]+\)$', text):
+    if re.match(r'^[\u4e00-\u9fff\uf900-\ufaff]{2,4}\([^\d]+\)$', text):
         return True
 
     # 漢字2-4文字で既知のパターン以外のスタッフ名
@@ -464,7 +464,7 @@ def is_staff_column(text: str) -> bool:
     # (1), (2) サフィックスを除去してから判定
     base_text = re.sub(r'\(\d+\)$', '', text).strip()
     # スタッフ名: 漢字のみ2-4文字（ただし一般的な単語は除外）
-    if re.match(r'^[\u4e00-\u9fff]{2,4}$', base_text):
+    if re.match(r'^[\u4e00-\u9fff\uf900-\ufaff]{2,4}$', base_text):
         common_words = ['診療', '予約', '患者', '連絡', '掲示', '一覧', '追加', '削除', '設定', '表示', '非表示', 'キャンセル']
         if base_text not in common_words:
             return True
@@ -476,7 +476,7 @@ def is_staff_column(text: str) -> bool:
         if '担当' in name_part or '指定' in name_part:
             return True
         # ひらがな/カタカナ名: 中山, 小島 etc. (漢字2-4文字+サフィックス)
-        if re.match(r'^[\u4e00-\u9fff]{2,4}$', name_part):
+        if re.match(r'^[\u4e00-\u9fff\uf900-\ufaff]{2,4}$', name_part):
             if name_part not in common_words:
                 return True
 
@@ -792,6 +792,22 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                 except Exception:
                     continue
+
+        # テーブルの全時間行数をカウント（未使用列検出用）
+        total_time_rows = sum(
+            1 for row_data in schedule_data['rows']
+            if row_data and len(row_data) >= 2 and ':' in row_data[0]['text'].split('\n')[0].strip()
+        )
+
+        # 未使用列フィルタ: 全スロットが空き = 未使用のスケジュール分割列
+        # (2)列など、予約が一切入っていない列は実際の空き枠ではない
+        unused_columns = []
+        for chair_name, slots in list(chair_slots.items()):
+            if len(slots) >= total_time_rows and total_time_rows > 0:
+                unused_columns.append(chair_name)
+                del chair_slots[chair_name]
+        if unused_columns:
+            logger.info(f"  未使用列を除外（全{total_time_rows}スロット空き）: {unused_columns}")
 
         # 結果をログ出力
         for chair, slots in sorted(chair_slots.items()):
