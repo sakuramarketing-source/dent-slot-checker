@@ -732,13 +732,16 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     diag_cnt = diag_count.get(chair_name, 0)
                     if diag_cnt < 3:
                         px_str = f"rgb({pixel[0]},{pixel[1]},{pixel[2]})" if pixel else 'none'
+                        bh = cell_data.get('blockHeight', 0)
+                        ch = cell_data.get('cellHeight', 0)
                         logger.info(f"  [DIAG] [{chair_name}] {time_str}: "
                                     f"text='{cell_clean[:15]}' "
                                     f"childBg='{child_bg}' "
                                     f"children={child_count} "
                                     f"pixel={px_str} "
+                                    f"blockH={bh} cellH={ch} "
                                     f"class='{cell_class}' "
-                                    f"html='{inner_html[:80]}'")
+                                    f"html='{inner_html[:100]}'")
                         diag_count[chair_name] = diag_cnt + 1
 
                     # colspan/rowspan チェック（結合セル = 休憩/閉鎖）
@@ -752,7 +755,13 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     # 後続のtdは空だが視覚的にはカバーされている
                     block_height = cell_data.get('blockHeight', 0)
                     cell_height = cell_data.get('cellHeight', 0)
-                    # cellHeightが0の場合フォールバック（absolute子要素でtd高さが0の場合）
+                    # JS offsetHeightが0の場合、innerHTMLからheight:NNNpxをパース
+                    if block_height == 0 and child_count > 0:
+                        import re
+                        h_match = re.search(r'height:\s*(\d+)px', inner_html)
+                        if h_match:
+                            block_height = int(h_match.group(1))
+                    # cellHeightが0の場合フォールバック
                     if cell_height == 0:
                         cell_height = 20  # Stransa標準行高の推定値
                     if block_height > 0 and child_count > 0:
