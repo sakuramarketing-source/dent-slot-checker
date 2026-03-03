@@ -787,6 +787,31 @@ staff_by_clinic:
     - 増田
     - 千田
     - 吉嶺
+  さくら医院歯科:
+    all_staff:
+    - 明井先生A枠
+    - 明井先生B枠
+    - DH大石
+    - DH髙田
+    - DH出口
+    - DH益田
+    - 検診
+    - SP
+    doctors:
+    - 明井先生A枠
+    - 明井先生B枠
+    hygienists:
+    - DH大石
+    - DH髙田
+    - DH出口
+    - DH益田
+    web_booking:
+    - 明井先生A枠
+    - 明井先生B枠
+    - DH大石
+    - DH髙田
+    - DH出口
+    - DH益田
   金沢さくら医院（歯科）:
     all_staff:
     - 井上

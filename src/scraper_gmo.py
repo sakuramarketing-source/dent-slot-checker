@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 
@@ -54,7 +55,7 @@ async def switch_to_dental_tab(page, clinic_name: str):
         # メイン切替ドロップダウンで「【歯科】」(value=7)を選択
         await page.select_option('#select_topmenu_main', value='7')
         await page.wait_for_load_state('networkidle', timeout=15000)
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(5000)
         logger.info(f"[{clinic_name}] 歯科タブ切替成功: select_topmenu_main value=7")
 
         # 切替後スクリーンショット
@@ -87,154 +88,138 @@ async def get_gmo_empty_slots(
     except Exception:
         pass
 
-    # カレンダーのHTML構造を解析
-    # GMO Reserveの週表示カレンダーからデータを抽出
-    calendar_data = await page.evaluate('''(tomorrowDay) => {
+    # rdata（JS予約データ）から空き枠を直接計算
+    # GMO Reserveのカレンダーは3テーブル分割+CSS配置のため、DOM解析ではなくJS変数を使用
+    slot_data = await page.evaluate('''(tomorrowStr) => {
         const result = {
-            staffNames: [],
-            timeSlots: [],
-            cells: [],
-            debug: {}
+            staffSlots: {},
+            debug: {
+                rdataTotal: 0,
+                tomorrowCount: 0,
+                mmIds: [],
+            }
         };
 
-        // カレンダーテーブルを探す
-        const tables = document.querySelectorAll('table');
-        let scheduleTable = null;
+        // rdata から翌日の予約を抽出
+        const allRdata = Object.values(window.rdata || {});
+        result.debug.rdataTotal = allRdata.length;
 
-        for (const table of tables) {
-            const text = table.textContent || '';
-            // 時間表示のあるテーブルを探す
-            if (text.includes('9:') || text.includes('10:') || text.includes('09:')) {
-                scheduleTable = table;
-                break;
+        const tomorrowData = allRdata.filter(r => r.r_date === tomorrowStr);
+        result.debug.tomorrowCount = tomorrowData.length;
+
+        // mm_id のユニーク値（スタッフ列）
+        const uniqueMmIds = [...new Set(tomorrowData.map(r => r.r_mm_id))];
+        result.debug.mmIds = uniqueMmIds;
+
+        // mm_id → スタッフ名のマッピングを構築
+        // ドロップダウン(select_topmenu_main)の option value = mm_id
+        const mmIdToName = {};
+        const select = document.getElementById('select_topmenu_main');
+        if (select) {
+            for (const opt of select.options) {
+                const val = parseInt(opt.value);
+                const text = (opt.textContent || '').trim();
+                if (!isNaN(val) && text) {
+                    // 「▼」を除去し、括弧以降を除去してクリーンな名前に
+                    const clean = text.replace(/^▼/, '').replace(/\(.*$/, '').replace(/（.*$/, '').trim();
+                    mmIdToName[val] = clean;
+                }
+            }
+        }
+        // 翌日の全予約を mm_id（スタッフ列）ごとにグループ化
+        const occupied = {};  // {mm_id: Set<time_minutes>}
+        const uniqueMmIdsFromData = new Set();
+
+        for (const r of tomorrowData) {
+            const mmId = r.r_mm_id;
+            uniqueMmIdsFromData.add(mmId);
+
+            if (!occupied[mmId]) occupied[mmId] = new Set();
+            const timeParts = (r.r_time || '').split(':');
+            if (timeParts.length >= 2) {
+                const startMin = parseInt(timeParts[0]) * 60 + parseInt(timeParts[1]);
+                const duration = r.r_minute || 15;
+                // 15分刻みで占有マーク
+                for (let t = startMin; t < startMin + duration; t += 15) {
+                    occupied[mmId].add(t);
+                }
             }
         }
 
-        if (!scheduleTable) {
-            result.debug.error = 'スケジュールテーブルが見つかりません';
-            result.debug.tableCount = tables.length;
-            return result;
+        // 営業時間のスロット生成（calendar_infoのmin_time〜max_time、15分刻み）
+        const calInfoTime = window.calendar_info || {};
+        let minTime = 540;  // デフォルト 9:00
+        let maxTime = 1200; // デフォルト 20:00
+        if (calInfoTime.min_time) {
+            const parts = calInfoTime.min_time.split(':');
+            minTime = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        }
+        if (calInfoTime.max_time) {
+            const parts = calInfoTime.max_time.split(':');
+            maxTime = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        }
+        const allSlots = [];
+        for (let t = minTime; t < maxTime; t += 15) {
+            allSlots.push(t);
         }
 
-        const rows = scheduleTable.querySelectorAll('tr');
-        result.debug.rowCount = rows.length;
+        // 各mm_id（スタッフ列）の空きスロットを計算
+        for (const mmId of uniqueMmIdsFromData) {
+            const occ = occupied[mmId] || new Set();
+            const emptySlots = allSlots.filter(t => !occ.has(t));
+            const staffName = mmIdToName[mmId] || `mm_${mmId}`;
 
-        // ヘッダー行からスタッフ名を取得
-        const headerRow = rows[0];
-        if (headerRow) {
-            const headerCells = headerRow.querySelectorAll('th, td');
-            for (let i = 0; i < headerCells.length; i++) {
-                const text = (headerCells[i].textContent || '').trim();
-                result.staffNames.push({index: i, name: text});
+            if (emptySlots.length > 0 && emptySlots.length < allSlots.length) {
+                result.staffSlots[staffName] = emptySlots;
             }
-        }
-
-        // 各行のセルデータを取得
-        for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
-            const cells = rows[rowIdx].querySelectorAll('td, th');
-            const rowData = [];
-
-            for (let colIdx = 0; colIdx < cells.length; colIdx++) {
-                const cell = cells[colIdx];
-                const text = (cell.textContent || '').trim();
-                const style = window.getComputedStyle(cell);
-                const bgColor = style.backgroundColor;
-                const classList = cell.className || '';
-
-                rowData.push({
-                    text: text,
-                    bgColor: bgColor,
-                    classList: classList,
-                    colIdx: colIdx,
-                    innerHTML: cell.innerHTML.substring(0, 100),
-                    colspan: cell.getAttribute('colspan') || '',
-                    rowspan: cell.getAttribute('rowspan') || '',
-                });
-            }
-
-            result.cells.push(rowData);
         }
 
         return result;
-    }''', tomorrow_day)
+    }''', tomorrow_str)
 
-    logger.info(f"[{clinic_name}] カレンダー解析: "
-                f"staff={len(calendar_data.get('staffNames', []))}, "
-                f"rows={len(calendar_data.get('cells', []))}")
+    # デバッグ情報をログ出力
+    debug = slot_data.get('debug', {})
+    logger.info(f"[{clinic_name}] rdata解析: total={debug.get('rdataTotal', 0)}, "
+                f"tomorrow={debug.get('tomorrowCount', 0)}, "
+                f"mmIds={debug.get('mmIds', [])}")
+    logger.info(f"[{clinic_name}] staffSlots keys: {list(slot_data.get('staffSlots', {}).keys())}")
 
-    if calendar_data.get('debug', {}).get('error'):
-        logger.warning(f"[{clinic_name}] {calendar_data['debug']['error']}")
-        logger.info(f"[{clinic_name}] debug: {calendar_data['debug']}")
-        return {}
-
-    # スタッフ名を解析
-    staff_names = calendar_data.get('staffNames', [])
-    logger.info(f"[{clinic_name}] ヘッダー: {[s['name'][:20] for s in staff_names]}")
-
-    # 各行からデータを取得
-    chair_slots: Dict[str, List[int]] = {}
-
-    for row_idx, row_data in enumerate(calendar_data.get('cells', [])):
-        if not row_data:
-            continue
-
-        # 最初のセルから時間を取得
-        first_cell = row_data[0] if row_data else {}
-        time_text = first_cell.get('text', '').strip()
-
-        # 時間パース
-        time_minutes = None
-        if ':' in time_text:
-            try:
-                parts = time_text.split(':')
-                hours = int(parts[0])
-                mins = int(parts[1][:2])
-                time_minutes = hours * 60 + mins
-            except (ValueError, IndexError):
-                pass
-
-        if time_minutes is None:
-            continue
-
-        time_str = f"{time_minutes // 60}:{time_minutes % 60:02d}"
-
-        # 各セルをチェック
-        for col_idx, cell in enumerate(row_data[1:], start=1):
-            # スタッフ名を取得
-            staff_idx = col_idx
-            if staff_idx >= len(staff_names):
-                continue
-            staff_name = staff_names[staff_idx].get('name', '').strip()
-            if not staff_name:
-                continue
-
-            cell_text = cell.get('text', '').strip()
-            bg_color = cell.get('bgColor', '')
-
-            # 空き枠判定: 黄色背景 + テキストなし
-            is_yellow = _is_yellow_background(bg_color)
-            is_empty_text = len(cell_text) == 0
-
-            if is_yellow and is_empty_text:
-                if staff_name not in chair_slots:
-                    chair_slots[staff_name] = []
-                chair_slots[staff_name].append(time_minutes)
-
-        # 最初の3行だけDIAG
-        if row_idx < 3:
-            for col_idx, cell in enumerate(row_data[:5]):
-                logger.info(f"  [DIAG] row={row_idx} col={col_idx}: "
-                            f"text='{cell.get('text', '')[:15]}' "
-                            f"bg='{cell.get('bgColor', '')}' "
-                            f"class='{cell.get('classList', '')}'")
+    # 結果を取得
+    chair_slots = slot_data.get('staffSlots', {})
 
     # 結果をログ出力
+    if not chair_slots:
+        logger.info(f"[{clinic_name}] 空き枠なし")
     for staff, slots in sorted(chair_slots.items()):
         times_str = ', '.join(f"{s//60}:{s%60:02d}" for s in sorted(slots)[:10])
         extra = f"... (+{len(slots) - 10})" if len(slots) > 10 else ""
         logger.info(f"  {staff}: {len(slots)}スロット: {times_str}{extra}")
 
     return chair_slots
+
+
+def _is_yellow_inline_style(style: str) -> bool:
+    """inline style文字列から黄色背景を判定
+
+    例: 'background-color: #ffff00;' or 'background: yellow;' or 'background-color:rgb(255,255,0)'
+    """
+    if not style:
+        return False
+    style = style.lower()
+    # 直接的なカラー名
+    if 'yellow' in style and ('background' in style):
+        return True
+    # hex形式
+    for hex_val in ['#ffff00', '#ff0', '#ffff33', '#ffd700']:
+        if hex_val in style and 'background' in style:
+            return True
+    # rgb形式をbackground内で探す
+    bg_match = re.search(r'background[^;]*rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', style)
+    if bg_match:
+        r, g, b = int(bg_match.group(1)), int(bg_match.group(2)), int(bg_match.group(3))
+        if r > 200 and g > 200 and b < 100:
+            return True
+    return False
 
 
 def _is_yellow_background(bg_color: str) -> bool:
@@ -399,26 +384,44 @@ async def sync_gmo_staff(
             await login_gmo(page, clinic['url'], login_id, password, clinic_name)
             await switch_to_dental_tab(page, clinic_name)
 
-            # カレンダーヘッダーからスタッフ名を取得
+            # ヘッダーテーブル + select dropdown からスタッフ名を取得
             staff_names = await page.evaluate('''() => {
-                const tables = document.querySelectorAll('table');
-                let scheduleTable = null;
-                for (const table of tables) {
-                    const text = table.textContent || '';
-                    if (text.includes('9:') || text.includes('10:') || text.includes('09:')) {
-                        scheduleTable = table;
-                        break;
+                const names = [];
+
+                // 方法1: select_topmenu_main のoption（個別スタッフ）
+                const select = document.getElementById('select_topmenu_main');
+                if (select) {
+                    for (const opt of select.options) {
+                        const text = (opt.textContent || '').trim();
+                        // 歯科スタッフのオプション（「先生」「DH」「検診」を含む）
+                        if (text.includes('先生') || text.includes('DH') || text.includes('検診')) {
+                            // 括弧以降を除去してクリーンな名前に
+                            const clean = text.replace(/\(.*$/, '').replace(/（.*$/, '').trim();
+                            if (clean && !names.includes(clean)) {
+                                names.push(clean);
+                            }
+                        }
                     }
                 }
-                if (!scheduleTable) return [];
-                const headerRow = scheduleTable.querySelector('tr');
-                if (!headerRow) return [];
-                const cells = headerRow.querySelectorAll('th, td');
-                const names = [];
-                for (let i = 1; i < cells.length; i++) {
-                    const text = (cells[i].textContent || '').trim();
-                    if (text) names.push(text);
+
+                // 方法2: ヘッダーテーブルからスタッフ名を取得（フォールバック）
+                if (names.length === 0) {
+                    const headerTable = document.getElementById('table_fix_top_table_box_500');
+                    if (headerTable) {
+                        const text = headerTable.textContent || '';
+                        // ▼で区切られたスタッフ名を抽出
+                        const parts = text.split('▼').filter(p => p.trim());
+                        for (const part of parts) {
+                            const clean = part.replace(/\(.*$/, '').replace(/（.*$/, '').trim();
+                            if (clean && (clean.includes('先生') || clean.includes('DH') || clean.includes('検診'))) {
+                                if (!names.includes(clean)) {
+                                    names.push(clean);
+                                }
+                            }
+                        }
+                    }
                 }
+
                 return names;
             }''')
 
