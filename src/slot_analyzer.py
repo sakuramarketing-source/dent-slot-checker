@@ -99,9 +99,15 @@ def analyze_doctor_slots(
             'threshold_minutes': 30
         }
     """
-    # 実際のスロット間隔を自動検出（分院ごとに異なる可能性: 5分/10分）
-    actual_interval = detect_slot_interval(slot_times, interval)
-    actual_consecutive = threshold_minutes // actual_interval  # 閾値分に必要な連続数
+    # スロット間隔の決定
+    # Stransa (15分) 等の固定間隔システムでは auto-detect をスキップ
+    # 空きスロットが疎らだと detect_slot_interval が 60→30 にスナップし
+    # consecutive=1 で全スロットが1ブロック扱いになるバグを防止
+    if interval in (15, 20, 30):
+        actual_interval = interval
+    else:
+        actual_interval = detect_slot_interval(slot_times, interval)
+    actual_consecutive = max(threshold_minutes // actual_interval, 2)  # 最低2連続を保証
 
     # 時間範囲表示用にグループを取得
     _, block_ranges = count_consecutive_blocks(

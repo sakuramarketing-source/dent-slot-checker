@@ -745,24 +745,36 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                         continue
 
                     # ③ キャンセル枠: cancelled_koma CSSクラス = Stransaのキャンセル枠マーカー
-                    # 斜線パターン（赤+白）でも吹き出しのみ（白背景）でも空き枠
+                    # 斜線パターン（赤+白）or 白背景バブル → 空き枠
+                    # 色付き背景 → 再予約済み（空き枠にしない）
                     if is_cancel:
                         pixels_arr = cell_data.get('pixels', [])
                         if pixels_arr:
                             pink_count = sum(
                                 1 for r, g, b in pixels_arr
-                                if r > 200 and g > 150 and b > 150 and (r - g) > 20
+                                if r > 200 and (r - g) > 30 and (r - b) > 30
                             )
                             white_count = sum(
                                 1 for r, g, b in pixels_arr
                                 if r > 240 and g > 240 and b > 240
                             )
-                            pattern = 'stripe' if (pink_count >= 1 and white_count >= 1) else 'bubble'
-                            logger.info(
-                                f"  [CANCEL] [{chair_name}] {time_str}: "
-                                f"pink={pink_count}/9 white={white_count}/9 → {pattern}"
-                            )
-                        pass  # → 空き枠として記録（斜線/吹き出し問わず）
+                            is_stripe = (pink_count >= 1 and white_count >= 1)
+                            is_white_bubble = (white_count >= 5)
+                            if is_stripe or is_white_bubble:
+                                pattern = 'stripe' if is_stripe else 'bubble'
+                                logger.info(
+                                    f"  [CANCEL-OPEN] [{chair_name}] {time_str}: "
+                                    f"pink={pink_count}/9 white={white_count}/9 → {pattern}"
+                                )
+                                # → 空き枠として記録（下のslot追加コードへ続く）
+                            else:
+                                logger.info(
+                                    f"  [CANCEL-REBOOKED] [{chair_name}] {time_str}: "
+                                    f"pink={pink_count}/9 white={white_count}/9 → skip"
+                                )
+                                booked_cols.add(chair_name)
+                                continue  # 再予約済み → 空き枠にしない
+                        # pixels がない場合はフォールバックで空き枠採用
 
                     # ④ テキストあり（waku以外の予約テキスト）→ スキップ
                     elif cell_clean:
