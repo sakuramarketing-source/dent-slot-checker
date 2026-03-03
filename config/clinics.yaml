@@ -79,7 +79,7 @@ stransa_clinics:
 # GMO Reserve 分院設定
 # 認証情報(id/password)はSecret Managerで管理
 gmo_clinics:
-  - name: "名駅さくら医院・歯科・皮膚科（歯科・GMO）"
+  - name: "さくら医院歯科"
     url: "https://manage-sakura.reserve.ne.jp/manage/login.php"
     system: "gmo"
     enabled: true
