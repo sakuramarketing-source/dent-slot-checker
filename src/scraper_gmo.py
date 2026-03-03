@@ -25,37 +25,102 @@ async def login_gmo(page, url: str, login_id: str, password: str, clinic_name: s
     await page.fill('#p-Panel--loginForm__id', login_id)
     await page.fill('#p-Panel--loginForm__pw', password)
 
-    # ログインボタンクリック（type="button"）
+    # ログインボタンクリック（type="button"、AJAXログイン）
     await page.click('#p-Panel--loginForm__loginButton')
-    await page.wait_for_load_state('domcontentloaded', timeout=15000)
+
+    # AJAXログイン → ナビゲーション or ページ変化を待機
+    try:
+        await page.wait_for_navigation(timeout=15000)
+    except Exception:
+        # ナビゲーションが発生しない場合（SPA的な遷移）→ 少し待つ
+        await page.wait_for_timeout(3000)
+
+    await page.wait_for_load_state('networkidle', timeout=15000)
+
+    # デバッグ: ログイン後のスクリーンショット保存
+    try:
+        import os
+        os.makedirs('logs/screenshots', exist_ok=True)
+        await page.screenshot(path=f'logs/screenshots/gmo_{clinic_name}_after_login.png')
+    except Exception:
+        pass
 
     logger.info(f"[{clinic_name}] ログイン後URL: {page.url}")
 
 
 async def switch_to_dental_tab(page, clinic_name: str):
     """医科→歯科タブに切り替え"""
-    # 「歯科」タブを探してクリック
+    # デバッグ: 歯科関連の要素を調査
+    tab_info = await page.evaluate('''() => {
+        const elements = document.querySelectorAll('a, button, li, span, div, input, select, option');
+        const matches = [];
+        for (const el of elements) {
+            const text = (el.textContent || '').trim();
+            if (text.includes('歯科') || text.includes('歯') || el.id.includes('shika') || el.id.includes('dental')) {
+                matches.push({
+                    tag: el.tagName,
+                    text: text.substring(0, 80),
+                    id: el.id || '',
+                    cls: (el.className || '').substring(0, 80),
+                    href: el.getAttribute('href') || '',
+                    onclick: el.getAttribute('onclick') || '',
+                    value: el.getAttribute('value') || ''
+                });
+            }
+        }
+        return matches;
+    }''')
+    logger.info(f"[{clinic_name}] 歯科関連要素: {tab_info}")
+
+    # 「歯科」タブを探してクリック（幅広いセレクタ）
     dental_tab_selectors = [
         'a:has-text("歯科")',
         'li:has-text("歯科") a',
+        'li:has-text("歯科")',
         '.tab:has-text("歯科")',
         'span:has-text("歯科")',
+        'button:has-text("歯科")',
+        'div:has-text("歯科")',
+        'select option:has-text("歯科")',
     ]
 
     for selector in dental_tab_selectors:
         try:
             tab = page.locator(selector).first
-            if await tab.is_visible(timeout=3000):
-                await tab.click()
-                await page.wait_for_load_state('domcontentloaded', timeout=10000)
-                # ページ更新を待機
+            if await tab.is_visible(timeout=2000):
+                # selectの場合はoption選択
+                tag = await tab.evaluate('el => el.tagName')
+                if tag == 'OPTION':
+                    select = tab.locator('..')
+                    value = await tab.get_attribute('value')
+                    await select.select_option(value=value)
+                else:
+                    await tab.click()
+                await page.wait_for_load_state('networkidle', timeout=10000)
                 await page.wait_for_timeout(2000)
                 logger.info(f"[{clinic_name}] 歯科タブ切替成功: {selector}")
+
+                # 切替後スクリーンショット
+                try:
+                    await page.screenshot(path=f'logs/screenshots/gmo_{clinic_name}_dental_tab.png')
+                except Exception:
+                    pass
                 return True
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[{clinic_name}] セレクタ {selector} 失敗: {e}")
             continue
 
-    logger.warning(f"[{clinic_name}] 歯科タブが見つかりません")
+    # 全セレクタ失敗 → ページ構造をダンプ
+    page_info = await page.evaluate('''() => {
+        const nav = document.querySelector('nav, header, .header, .navbar, .menu');
+        return {
+            title: document.title,
+            url: location.href,
+            navHTML: nav ? nav.innerHTML.substring(0, 500) : 'nav not found',
+            bodyText: document.body.innerText.substring(0, 300)
+        };
+    }''')
+    logger.warning(f"[{clinic_name}] 歯科タブが見つかりません: {page_info}")
     return False
 
 
