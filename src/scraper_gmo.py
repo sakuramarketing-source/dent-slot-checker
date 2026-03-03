@@ -21,13 +21,12 @@ async def login_gmo(page, url: str, login_id: str, password: str, clinic_name: s
     await page.goto(url, wait_until='domcontentloaded', timeout=30000)
     logger.info(f"[{clinic_name}] ページ読み込み完了")
 
-    # ID/パスワード入力
-    await page.fill('input[name="login_id"], input[name="id"], input[type="text"]', login_id)
-    await page.fill('input[name="login_pw"], input[name="password"], input[type="password"]', password)
+    # ID/パスワード入力（GMO Reserve固有のid属性）
+    await page.fill('#p-Panel--loginForm__id', login_id)
+    await page.fill('#p-Panel--loginForm__pw', password)
 
-    # ログインボタンクリック
-    login_btn = page.locator('input[type="submit"], button[type="submit"], .login-btn, #login-btn')
-    await login_btn.first.click()
+    # ログインボタンクリック（type="button"）
+    await page.click('#p-Panel--loginForm__loginButton')
     await page.wait_for_load_state('domcontentloaded', timeout=15000)
 
     logger.info(f"[{clinic_name}] ログイン後URL: {page.url}")
