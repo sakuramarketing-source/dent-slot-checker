@@ -20,6 +20,7 @@ CLINIC_ORDER = [
     '池下さくら歯科',          # 2016頃
     '日進赤池たんぽぽ歯科',    # 2017
     '春日井アップル歯科',      # 2018
+    'さくら医院歯科',          # GMO Reserve
     '流山ハピネス歯科',        # 2021
     '名駅さくら医院・歯科・皮膚科（歯科）',  # Stransa
     'きらり大森',              # 2022 Stransa
@@ -460,6 +461,7 @@ def sync_staff():
     sys.path.insert(0, current_app.config['PROJECT_ROOT'])
     from src.scraper import sync_all_staff
     from src.scraper_stransa import sync_stransa_staff
+    from src.scraper_gmo import sync_gmo_staff
     from src.config_loader import load_config, get_enabled_clinics
 
     try:
@@ -468,7 +470,7 @@ def sync_staff():
         clinics = get_enabled_clinics(config)
 
         # dent-sys 同期
-        dent_sys_clinics = [c for c in clinics if c.get('system') != 'stransa']
+        dent_sys_clinics = [c for c in clinics if c.get('system') not in ('stransa', 'gmo')]
         sync_results = asyncio.run(sync_all_staff(dent_sys_clinics, headless=True))
 
         # Stransa 同期
@@ -476,6 +478,12 @@ def sync_staff():
         if stransa_clinics:
             stransa_results = asyncio.run(sync_stransa_staff(stransa_clinics, headless=True))
             sync_results.update(stransa_results)
+
+        # GMO 同期
+        gmo_clinics = [c for c in clinics if c.get('system') == 'gmo']
+        if gmo_clinics:
+            gmo_results = asyncio.run(sync_gmo_staff(gmo_clinics, headless=True))
+            sync_results.update(gmo_results)
 
         # staff_rules.yaml を更新
         staff_rules = load_staff_rules()

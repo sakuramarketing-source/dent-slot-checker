@@ -351,3 +351,77 @@ async def scrape_all_gmo_clinics(
         await browser.close()
 
     return results
+
+
+async def sync_gmo_staff(
+    clinics: list,
+    headless: bool = True
+) -> Dict[str, List[str]]:
+    """GMO Reserve 全分院のスタッフ名を同期取得
+
+    ログイン → 歯科タブ切替 → カレンダーヘッダーからスタッフ名を取得
+
+    Returns: {clinic_name: [staff_name, ...]}
+    """
+    from playwright.async_api import async_playwright
+
+    results = {}
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch(headless=headless)
+
+    for clinic in clinics:
+        if not clinic.get('enabled', True):
+            continue
+
+        clinic_name = clinic['name']
+        login_id = clinic.get('id', '')
+        password = clinic.get('password', '')
+
+        if not login_id or not password:
+            logger.warning(f"[{clinic_name}] 認証情報なし、スキップ")
+            continue
+
+        context = await browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            locale='ja-JP'
+        )
+        page = await context.new_page()
+
+        try:
+            await login_gmo(page, clinic['url'], login_id, password, clinic_name)
+            await switch_to_dental_tab(page, clinic_name)
+
+            # カレンダーヘッダーからスタッフ名を取得
+            staff_names = await page.evaluate('''() => {
+                const tables = document.querySelectorAll('table');
+                let scheduleTable = null;
+                for (const table of tables) {
+                    const text = table.textContent || '';
+                    if (text.includes('9:') || text.includes('10:') || text.includes('09:')) {
+                        scheduleTable = table;
+                        break;
+                    }
+                }
+                if (!scheduleTable) return [];
+                const headerRow = scheduleTable.querySelector('tr');
+                if (!headerRow) return [];
+                const cells = headerRow.querySelectorAll('th, td');
+                const names = [];
+                for (let i = 1; i < cells.length; i++) {
+                    const text = (cells[i].textContent || '').trim();
+                    if (text) names.push(text);
+                }
+                return names;
+            }''')
+
+            results[clinic_name] = staff_names
+            logger.info(f"[{clinic_name}] スタッフ同期: {len(staff_names)}名 - {staff_names}")
+
+        except Exception as e:
+            logger.error(f"[{clinic_name}] スタッフ同期失敗: {e}")
+            results[clinic_name] = []
+        finally:
+            await context.close()
+
+    await browser.close()
+    return results
