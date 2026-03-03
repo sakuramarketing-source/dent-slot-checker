@@ -521,7 +521,12 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                             const childCs = child ? window.getComputedStyle(child) : null;
                             const rect = cell.getBoundingClientRect();
                             const firstChild = cell.children[0];
-                            const blockH = (firstChild && firstChild.offsetHeight > 50) ? firstChild.offsetHeight : 0;
+                            let blockH = 0;
+                            if (firstChild) {
+                                blockH = firstChild.offsetHeight || parseInt(firstChild.style.height) || 0;
+                                if (blockH <= 50) blockH = 0;
+                            }
+                            const rowH = cell.parentElement ? cell.parentElement.offsetHeight : 0;
                             return {
                                 text: (cell.textContent || '').trim(),
                                 className: cell.className || '',
@@ -532,7 +537,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                 innerHTML: cell.innerHTML.substring(0, 200),
                                 px: Math.floor(rect.x - tableRect.x + rect.width / 2),
                                 py: Math.floor(rect.y - tableRect.y + rect.height / 2),
-                                cellHeight: cell.offsetHeight || 0,
+                                cellHeight: rowH || cell.offsetHeight || 0,
                                 blockHeight: blockH,
                             };
                         });
@@ -747,11 +752,19 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     # 後続のtdは空だが視覚的にはカバーされている
                     block_height = cell_data.get('blockHeight', 0)
                     cell_height = cell_data.get('cellHeight', 0)
-                    if block_height > 0 and child_count > 0 and cell_height > 0:
+                    # cellHeightが0の場合フォールバック（absolute子要素でtd高さが0の場合）
+                    if cell_height == 0:
+                        cell_height = 20  # Stransa標準行高の推定値
+                    if block_height > 0 and child_count > 0:
                         rows_covered = block_height // cell_height
                         if rows_covered > 1:
                             block_coverage[chair_name] = row_idx + rows_covered
                             booked_cols.add(chair_name)
+                            logger.info(
+                                f"  [OVERLAY] [{chair_name}] {time_str}: "
+                                f"blockH={block_height}px cellH={cell_height}px "
+                                f"→ {rows_covered}行カバー"
+                            )
 
                     # オーバーレイでカバーされたセルはスキップ
                     if chair_name in block_coverage and row_idx < block_coverage[chair_name]:
