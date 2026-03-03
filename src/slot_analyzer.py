@@ -5,17 +5,26 @@ from typing import List, Dict, Any, Tuple
 
 
 def detect_slot_interval(slot_times: List[int], default: int = 5) -> int:
-    """スロット時間リストから実際のスロット間隔を自動検出"""
+    """スロット時間リストから実際のスロット間隔を自動検出
+
+    最小有効ギャップ方式: 空きスロット間の最小ギャップが実際のグリッド間隔を示す。
+    最頻値ベースだと疎なスロット（例: [11:45, 13:30, 14:45, 15:45]）で
+    60分ギャップが最頻値→30分にスナップし、consecutive=1になるバグがあった。
+    """
     if len(slot_times) < 2:
         return default
     sorted_times = sorted(slot_times)
     gaps = [sorted_times[i+1] - sorted_times[i] for i in range(len(sorted_times) - 1) if sorted_times[i+1] > sorted_times[i]]
     if not gaps:
         return default
+    valid_intervals = (5, 10, 15, 20, 30)
+    # 有効な間隔に一致するギャップの中で最小値を使用
+    matching = [g for g in gaps if g in valid_intervals]
+    if matching:
+        return min(matching)
+    # フォールバック: 最頻値を最寄りの有効間隔にスナップ
     detected = Counter(gaps).most_common(1)[0][0]
-    if detected in (5, 10, 15, 20, 30):
-        return detected
-    return min((5, 10, 15, 20, 30), key=lambda x: abs(x - detected))
+    return min(valid_intervals, key=lambda x: abs(x - detected))
 
 
 def count_consecutive_blocks(
@@ -99,14 +108,8 @@ def analyze_doctor_slots(
             'threshold_minutes': 30
         }
     """
-    # スロット間隔の決定
-    # Stransa (15分) 等の固定間隔システムでは auto-detect をスキップ
-    # 空きスロットが疎らだと detect_slot_interval が 60→30 にスナップし
-    # consecutive=1 で全スロットが1ブロック扱いになるバグを防止
-    if interval in (15, 20, 30):
-        actual_interval = interval
-    else:
-        actual_interval = detect_slot_interval(slot_times, interval)
+    # 実際のスロット間隔を自動検出（最小有効ギャップ方式）
+    actual_interval = detect_slot_interval(slot_times, interval)
     actual_consecutive = max(threshold_minutes // actual_interval, 2)  # 最低2連続を保証
 
     # 時間範囲表示用にグループを取得

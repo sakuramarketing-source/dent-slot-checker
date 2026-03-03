@@ -520,6 +520,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                             const child = cell.querySelector('div, span, a');
                             const childCs = child ? window.getComputedStyle(child) : null;
                             const rect = cell.getBoundingClientRect();
+                            const firstChild = cell.children[0];
+                            const blockH = (firstChild && firstChild.offsetHeight > 50) ? firstChild.offsetHeight : 0;
                             return {
                                 text: (cell.textContent || '').trim(),
                                 className: cell.className || '',
@@ -530,6 +532,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                 innerHTML: cell.innerHTML.substring(0, 200),
                                 px: Math.floor(rect.x - tableRect.x + rect.width / 2),
                                 py: Math.floor(rect.y - tableRect.y + rect.height / 2),
+                                cellHeight: cell.offsetHeight || 0,
+                                blockHeight: blockH,
                             };
                         });
                     })
@@ -679,6 +683,9 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
         # 時間行を処理（全てPython側で実行 — Playwright API呼び出し不要）
         diag_count = {}  # 診断ログ用カウンタ
         booked_cols: set = set()  # 予約が1つでもあるカラム
+        # カラムごとの予約ブロックオーバーレイ範囲を追跡
+        # key: chair_name, value: カバー終了行インデックス
+        block_coverage: dict = {}
 
         for row_idx, row_data in enumerate(schedule_data['rows']):
             if not row_data or len(row_data) < 2:
@@ -733,6 +740,22 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                     if cell_data['colspan'] and cell_data['colspan'] != '1':
                         continue
                     if cell_data['rowspan'] and cell_data['rowspan'] != '1':
+                        continue
+
+                    # 予約ブロックオーバーレイ追跡:
+                    # Stransaの予約ブロック(position:absolute)は最初のtdにのみ存在し
+                    # 後続のtdは空だが視覚的にはカバーされている
+                    block_height = cell_data.get('blockHeight', 0)
+                    cell_height = cell_data.get('cellHeight', 0)
+                    if block_height > 0 and child_count > 0 and cell_height > 0:
+                        rows_covered = block_height // cell_height
+                        if rows_covered > 1:
+                            block_coverage[chair_name] = row_idx + rows_covered
+                            booked_cols.add(chair_name)
+
+                    # オーバーレイでカバーされたセルはスキップ
+                    if chair_name in block_coverage and row_idx < block_coverage[chair_name]:
+                        booked_cols.add(chair_name)
                         continue
 
                     # ① キャンセル枠: CSSクラス cancelled_koma → 予約可能
