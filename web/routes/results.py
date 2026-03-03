@@ -373,7 +373,7 @@ def run_check():
 
     # システムフィルタ取得
     data = request.get_json(silent=True) or {}
-    system_filter = data.get('system')  # 'dent-sys', 'stransa', or None
+    system_filter = data.get('system')  # 'dent-sys', 'stransa', 'gmo', or None
 
     # ログセットアップ
     log_dir = os.path.join(project_root, 'logs')
@@ -441,13 +441,19 @@ def run_check():
 
             dent_sys_clinics = [c for c in config.get('dent_sys_clinics', []) if c.get('enabled', True)]
             stransa_clinics = [c for c in config.get('stransa_clinics', []) if c.get('enabled', True)]
+            gmo_clinics = [c for c in config.get('gmo_clinics', []) if c.get('enabled', True)]
 
             if system_filter == 'dent-sys':
                 stransa_clinics = []
+                gmo_clinics = []
             elif system_filter == 'stransa':
                 dent_sys_clinics = []
+                gmo_clinics = []
+            elif system_filter == 'gmo':
+                dent_sys_clinics = []
+                stransa_clinics = []
 
-            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院")
+            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院, GMO: {len(gmo_clinics)}分院")
 
             all_results = []
             total_clinics = 0
@@ -458,6 +464,7 @@ def run_check():
             async def _scrape_all():
                 from src.scraper_stransa import scrape_all_stransa_clinics
                 from src.scraper import scrape_all_clinics
+                from src.scraper_gmo import scrape_all_gmo_clinics
                 results = []
 
                 if stransa_clinics:
@@ -484,6 +491,16 @@ def run_check():
                         results.append(('dent-sys', e))
                         logger_t.error(f"dent-sys失敗: {e}")
 
+                if gmo_clinics:
+                    logger_t.info("=== GMO Reserve スクレイピング開始 ===")
+                    try:
+                        r = await scrape_all_gmo_clinics(gmo_clinics, browser=browser)
+                        results.append(('gmo', r))
+                        logger_t.info(f"=== GMO 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('gmo', e))
+                        logger_t.error(f"GMO失敗: {e}")
+
                 return results
 
             scrape_results = run_async(_scrape_all())
@@ -507,7 +524,7 @@ def run_check():
             sync_output_from_gcs(output_path)
 
             systems_in_results = set(r.get('system') for r in all_results)
-            missing_systems = {'dent-sys', 'stransa'} - systems_in_results
+            missing_systems = {'dent-sys', 'stransa', 'gmo'} - systems_in_results
             if missing_systems and all_results:
                 merged = _merge_missing_systems(
                     all_results, systems_in_results, output_path, check_date
@@ -555,7 +572,7 @@ def run_check():
     _check_thread = threading.Thread(target=_run_check_thread, daemon=True)
     _check_thread.start()
 
-    system_label = {'dent-sys': 'dent-sys', 'stransa': 'Stransa'}.get(system_filter, '全システム')
+    system_label = {'dent-sys': 'dent-sys', 'stransa': 'Stransa', 'gmo': 'GMO Reserve'}.get(system_filter, '全システム')
     return jsonify({
         'success': True,
         'message': f'{system_label}のチェックを開始しました'

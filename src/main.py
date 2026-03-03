@@ -19,6 +19,7 @@ from .config_loader import (
 )
 from .scraper import scrape_all_clinics
 from .scraper_stransa import scrape_all_stransa_clinics
+from .scraper_gmo import scrape_all_gmo_clinics
 from .slot_analyzer import analyze_doctor_slots, check_clinic_availability, count_30min_blocks
 from .output_writer import save_results, format_summary
 
@@ -76,6 +77,10 @@ def analyze_results(
     # システムタイプによってスロット設定を変更
     if system_type == 'stransa':
         # Stransa: 15分刻み、2連続で30分
+        consecutive_required = 2
+        interval = 15
+    elif system_type == 'gmo':
+        # GMO Reserve: スロット間隔は自動検出に任せる（デフォルト15分）
         consecutive_required = 2
         interval = 15
     else:
@@ -188,15 +193,25 @@ async def main_async(
         c for c in config.get('stransa_clinics', [])
         if c.get('enabled', True)
     ]
+    gmo_clinics = [
+        c for c in config.get('gmo_clinics', [])
+        if c.get('enabled', True)
+    ]
 
     # フィルタを適用
     if system_filter == 'dent-sys':
         stransa_clinics = []
+        gmo_clinics = []
     elif system_filter == 'stransa':
         dent_sys_clinics = []
+        gmo_clinics = []
+    elif system_filter == 'gmo':
+        dent_sys_clinics = []
+        stransa_clinics = []
 
     logger.info(f"dent-sys.net 分院数: {len(dent_sys_clinics)}")
     logger.info(f"Stransa 分院数: {len(stransa_clinics)}")
+    logger.info(f"GMO Reserve 分院数: {len(gmo_clinics)}")
     logger.info(f"除外パターン: {exclude_patterns}")
     logger.info(f"スロット設定: {slot_settings}")
 
@@ -229,6 +244,14 @@ async def main_async(
             headless
         ))
         task_labels.append('stransa')
+
+    if gmo_clinics:
+        logger.info("=== GMO Reserve スクレイピング開始 ===")
+        scrape_tasks.append(scrape_all_gmo_clinics(
+            gmo_clinics,
+            headless
+        ))
+        task_labels.append('gmo')
 
     # 両システム同時実行（10分タイムアウト）
     try:
@@ -296,7 +319,7 @@ def main():
     )
     parser.add_argument(
         '--system',
-        choices=['dent-sys', 'stransa', 'all'],
+        choices=['dent-sys', 'stransa', 'gmo', 'all'],
         default='all',
         help='対象システム（デフォルト: all）'
     )
