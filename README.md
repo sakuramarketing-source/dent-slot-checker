@@ -4,7 +4,7 @@
 
 ## 概要
 
-さくら会グループの各分院が利用する予約システム（dent-sys.net / Stransa）にログインし、翌日の予約状況をスクレイピング。30分以上の連続空き枠を検出し、分院ごとの空き状況をダッシュボードで確認できる。
+さくら会グループの各分院が利用する予約システム（dent-sys.net / Stransa / GMO Reserve）にログインし、翌日の予約状況をスクレイピング。30分以上の連続空き枠を検出し、分院ごとの空き状況をダッシュボードで確認できる。
 
 ## 対応システム
 
@@ -12,6 +12,7 @@
 |---------|-----------|----------------|
 | dent-sys.net | 5分 or 10分（自動検出） | 6連続 or 3連続スロット |
 | Stransa (Apotool & Box) | 15分 | 2連続スロット |
+| GMO Reserve (reserve.ne.jp) | 自動検出 | 黄色背景+テキストなし |
 
 ## 機能
 
@@ -24,9 +25,9 @@
 ## データフロー
 
 ```
-予約システム (dent-sys.net / Stransa)
+予約システム (dent-sys.net / Stransa / GMO Reserve)
   ↓ Playwright スクレイピング
-空きスロット収集 (5分/15分刻み)
+空きスロット収集 (5分/10分/15分 自動検出)
   ↓ slot_analyzer.py
 30分空き枠の検出 & 集計
   ↓ output_writer.py
@@ -177,6 +178,8 @@ dent-slot-checker/
 ## 更新履歴
 
 - **2026-03-03** 予約ブロックオーバーレイ検出: position:absoluteの予約ブロック（アシスト等）が後続セルをカバーする範囲を追跡し偽空き枠を排除、detect_slot_interval最小有効ギャップ方式に改善（ヒロ10分間隔対応）
+- **2026-03-03** GMO Reserve対応: さくら医院歯科（reserve.ne.jp）スクレイパー追加、ログイン→歯科タブ切替→黄色背景空き枠検出
+- **2026-03-03** きらり大森DH祢津精度修正: 予約ブロックのオーバーレイ検出追加（position:absolute+height:NNNpxパース）、ヒロデンタル10分間隔対応（detect_slot_interval最小有効ギャップ方式に変更）
 - **2026-03-03** 町屋精度修正: Stransa slot_interval自動検出バイパス（疎スロットで60→30スナップ→consecutive=1バグ修正）、cancelled_koma再予約済み判定追加（白背景/ストライプのみ空き枠、色付き背景はスキップ）
 - **2026-03-02** キャンセル枠改善: cancelled_koma吹き出しのみケースも空き枠として採用（斜線パターン必須を撤廃）、カテゴリ分類にサフィックス除去追加（DH小森(1)→DH小森でhygienistマッチ）
 - **2026-03-02** 精度修正: Stransaテーブル選択（最多スタッフ列）、is_staff_column()サフィックス(1)/(2)対応、未使用列フィルタ（予約ゼロ列除外）、web_bookingサフィックス除去、CJK互換漢字(﨑)対応、Cloud Run CPU throttling解消(--no-cpu-throttling)
