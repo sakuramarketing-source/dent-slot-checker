@@ -176,6 +176,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-03-03** 町屋精度修正: Stransa slot_interval自動検出バイパス（疎スロットで60→30スナップ→consecutive=1バグ修正）、cancelled_koma再予約済み判定追加（白背景/ストライプのみ空き枠、色付き背景はスキップ）
 - **2026-03-02** キャンセル枠改善: cancelled_koma吹き出しのみケースも空き枠として採用（斜線パターン必須を撤廃）、カテゴリ分類にサフィックス除去追加（DH小森(1)→DH小森でhygienistマッチ）
 - **2026-03-02** 精度修正: Stransaテーブル選択（最多スタッフ列）、is_staff_column()サフィックス(1)/(2)対応、未使用列フィルタ（予約ゼロ列除外）、web_bookingサフィックス除去、CJK互換漢字(﨑)対応、Cloud Run CPU throttling解消(--no-cpu-throttling)
 - **2026-03-02** 並列実行を逐次に戻す: ページ描画タイムアウト→スタッフタブ未検出→web_bookingフィルタで全滅する精度問題を修正
