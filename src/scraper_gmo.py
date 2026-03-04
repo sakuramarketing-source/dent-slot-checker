@@ -5,11 +5,10 @@
 - 空き枠判定: 黄色背景 + テキストなし
 """
 
-import asyncio
+import base64
 import logging
-import re
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Any
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +68,111 @@ async def switch_to_dental_tab(page, clinic_name: str):
         return False
 
 
+async def navigate_to_tomorrow_gmo(page, clinic_name: str, tomorrow_str: str) -> bool:
+    """カレンダーを翌日に遷移
+
+    試行順: URL パラメータ → JS関数 → 次日ボタンクリック
+    """
+    current_url = page.url
+    logger.info(f"[{clinic_name}] 翌日遷移開始: {tomorrow_str}")
+
+    # 方法A: URLパラメータで日付指定
+    # calendar.php?view_date=YYYY-MM-DD
+    if 'calendar.php' in current_url:
+        base = current_url.split('?')[0]
+        target_url = f"{base}?view_date={tomorrow_str}"
+        logger.info(f"[{clinic_name}] URL遷移: {target_url}")
+        await page.goto(target_url, wait_until='networkidle', timeout=30000)
+        await page.wait_for_timeout(3000)
+
+        # 遷移後スクリーンショット
+        try:
+            await page.screenshot(path=f'logs/screenshots/gmo_{clinic_name}_after_nav.png')
+        except Exception:
+            pass
+
+        # URL遷移が成功したか確認
+        new_url = page.url
+        logger.info(f"[{clinic_name}] 遷移後URL: {new_url}")
+
+        # ページ内の日付表示で確認
+        page_date_info = await page.evaluate('''(tomorrowStr) => {
+            const info = {};
+            // calendar_info から日付を確認
+            if (window.calendar_info) {
+                info.view_date = calendar_info.view_date || null;
+                info.current_date = calendar_info.current_date || null;
+            }
+            // ページタイトルや日付表示を確認
+            const title = document.title || '';
+            info.title = title;
+            // body text から日付を探す（最初の500文字のみ）
+            const bodyText = (document.body.innerText || '').substring(0, 500);
+            info.hasDate = bodyText.includes(tomorrowStr) || bodyText.includes(tomorrowStr.replace(/-/g, '/'));
+            // div_column_head が存在するか（歯科タブが維持されているか）
+            info.colHeadCount = document.querySelectorAll('.div_column_head').length;
+            return info;
+        }''', tomorrow_str)
+        logger.info(f"[{clinic_name}] 遷移確認: {page_date_info}")
+
+        # 歯科タブが維持されていて列ヘッダーが見えればOK
+        if page_date_info.get('colHeadCount', 0) > 0:
+            logger.info(f"[{clinic_name}] URL遷移成功: 歯科カレンダー表示中 ({page_date_info.get('colHeadCount')}列)")
+            return True
+
+        logger.info(f"[{clinic_name}] URL遷移後、歯科カレンダーが見えない → フォールバック")
+
+    # 方法B: JS関数で日付移動
+    js_nav = await page.evaluate('''(dateStr) => {
+        // GMO Reserve の一般的な日付移動関数を試行
+        if (typeof move_date === 'function') {
+            move_date(dateStr);
+            return 'move_date';
+        }
+        if (typeof changeDate === 'function') {
+            changeDate(dateStr);
+            return 'changeDate';
+        }
+        if (typeof goToDate === 'function') {
+            goToDate(dateStr);
+            return 'goToDate';
+        }
+        // calendar_info から日付移動関数を探す
+        if (window.calendar_info && typeof window.calendar_info.move_date === 'function') {
+            window.calendar_info.move_date(dateStr);
+            return 'calendar_info.move_date';
+        }
+        return null;
+    }''', tomorrow_str)
+
+    if js_nav:
+        logger.info(f"[{clinic_name}] JS関数 {js_nav} で遷移")
+        await page.wait_for_load_state('networkidle', timeout=15000)
+        await page.wait_for_timeout(3000)
+        return True
+
+    # 方法C: 次日ボタンクリック
+    next_selectors = [
+        'a:has-text(">")', 'a:has-text("翌日")', 'a:has-text("次")',
+        '.next-day', '.btn-next', '[onclick*="next"]',
+        'img[alt="次"]', 'img[alt=">"]',
+    ]
+    for sel in next_selectors:
+        try:
+            btn = page.locator(sel).first
+            if await btn.is_visible(timeout=1000):
+                await btn.click()
+                await page.wait_for_load_state('networkidle', timeout=15000)
+                await page.wait_for_timeout(3000)
+                logger.info(f"[{clinic_name}] ボタンクリックで翌日遷移: {sel}")
+                return True
+        except Exception:
+            continue
+
+    logger.warning(f"[{clinic_name}] 翌日遷移失敗: すべての方法が失敗")
+    return False
+
+
 async def get_gmo_empty_slots(
     page, clinic_name: str
 ) -> Dict[str, List[int]]:
@@ -88,101 +192,225 @@ async def get_gmo_empty_slots(
     except Exception:
         pass
 
-    # rdata（JS予約データ）から空き枠を直接計算
-    # GMO Reserveのカレンダーは3テーブル分割+CSS配置のため、DOM解析ではなくJS変数を使用
-    slot_data = await page.evaluate('''(tomorrowStr) => {
+    # Screenshot + Canvas API で黄色セルを検出
+    # GMO Reserveのカレンダーはtd背景がCSSで黄色に設定されるが、
+    # getComputedStyleはheadless Chromiumで透明を返すため、ピクセル色で判定
+
+    # viewportを拡大してカレンダー全体をキャプチャ
+    await page.set_viewport_size({'width': 2500, 'height': 5000})
+    await page.wait_for_timeout(2000)
+
+    # カレンダー本体テーブルのスクリーンショット
+    body_table = page.locator('#table_box_500')
+    try:
+        screenshot_bytes = await body_table.screenshot()
+    except Exception as e:
+        logger.warning(f"[{clinic_name}] テーブルスクリーンショット失敗: {e}")
+        # フォールバック: フルページスクリーンショット
+        screenshot_bytes = await page.screenshot(full_page=True)
+
+    b64 = base64.b64encode(screenshot_bytes).decode()
+
+    # デバッグ: body tableスクリーンショットを保存
+    try:
+        import os
+        os.makedirs('logs/screenshots', exist_ok=True)
+        with open(f'logs/screenshots/gmo_{clinic_name}_body_table.png', 'wb') as f:
+            f.write(screenshot_bytes)
+        logger.info(f"[{clinic_name}] body tableスクリーンショット保存: logs/screenshots/gmo_{clinic_name}_body_table.png")
+    except Exception as e:
+        logger.warning(f"[{clinic_name}] スクリーンショット保存失敗: {e}")
+
+    # Canvas APIでピクセル色を解析 + グリッド座標を取得
+    slot_data = await page.evaluate('''async ({b64, tomorrowStr}) => {
         const result = {
             staffSlots: {},
             debug: {
-                rdataTotal: 0,
-                tomorrowCount: 0,
-                mmIds: [],
+                gridInfo: null,
+                yellowCellCount: 0,
+                samplePixels: [],
             }
         };
 
-        // rdata から翌日の予約を抽出
-        const allRdata = Object.values(window.rdata || {});
-        result.debug.rdataTotal = allRdata.length;
+        // screenshot → Canvas
+        const img = new Image();
+        img.src = 'data:image/png;base64,' + b64;
+        await new Promise(r => { img.onload = r; });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
 
-        const tomorrowData = allRdata.filter(r => r.r_date === tomorrowStr);
-        result.debug.tomorrowCount = tomorrowData.length;
+        // テーブル本体の座標
+        const bodyTable = document.getElementById('table_box_500');
+        if (!bodyTable) {
+            result.debug.error = 'table_box_500 not found';
+            return result;
+        }
+        const bodyRect = bodyTable.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const scaleX = canvas.width / (bodyRect.width || 1);
+        const scaleY = canvas.height / (bodyRect.height || 1);
 
-        // mm_id のユニーク値（スタッフ列）
-        const uniqueMmIds = [...new Set(tomorrowData.map(r => r.r_mm_id))];
-        result.debug.mmIds = uniqueMmIds;
+        // スタッフ列情報を取得: td_reserve セルから列の x 座標を解析
+        // table_box_500 内の全 td_reserve セルを取得
+        const tdReserves = bodyTable.querySelectorAll('.td_reserve');
+        // td_reserve セルを行ごとにグループ化（同じ y 座標のセル = 同じ行）
+        // 各列の x 座標とスタッフ名を特定
+        const columnInfo = [];  // [{x, width, mmId, name}]
+        const seenX = new Set();
 
-        // mm_id → スタッフ名のマッピングを構築
-        // ドロップダウン(select_topmenu_main)の option value = mm_id
-        const mmIdToName = {};
-        const select = document.getElementById('select_topmenu_main');
-        if (select) {
-            for (const opt of select.options) {
-                const val = parseInt(opt.value);
-                const text = (opt.textContent || '').trim();
-                if (!isNaN(val) && text) {
-                    // 「▼」を除去し、括弧以降を除去してクリーンな名前に
-                    const clean = text.replace(/^▼/, '').replace(/\(.*$/, '').replace(/（.*$/, '').trim();
-                    mmIdToName[val] = clean;
+        // div_column_head からスタッフ列情報を取得（ヘッダーテーブル内）
+        const headerTable = document.getElementById('table_fix_top_table_box_500');
+        const colHeads = headerTable
+            ? headerTable.querySelectorAll('.div_column_head')
+            : document.querySelectorAll('.div_column_head');
+        for (const head of colHeads) {
+            const text = (head.textContent || '').trim();
+            const style = head.getAttribute('style') || '';
+            const widthMatch = style.match(/width:\s*(\d+)px/);
+            const w = widthMatch ? parseInt(widthMatch[1]) : 180;
+            // 名前を正規化
+            const name = text.replace(/^▼/, '').replace(/\(.*$/, '').replace(/（.*$/, '').trim();
+            if (name) {
+                columnInfo.push({name, width: w});
+            }
+        }
+
+        // td_reserve セルの最初の行から各列のx座標を取得
+        const firstRowCells = [];
+        if (tdReserves.length > 0) {
+            // 最初の行のセルを収集（y座標が同じ）
+            const firstY = tdReserves[0].getBoundingClientRect().y;
+            for (const td of tdReserves) {
+                const r = td.getBoundingClientRect();
+                if (Math.abs(r.y - firstY) < 3) {
+                    firstRowCells.push({x: r.x - bodyRect.x, width: r.width, height: r.height});
                 }
             }
         }
-        // 翌日の全予約を mm_id（スタッフ列）ごとにグループ化
-        const occupied = {};  // {mm_id: Set<time_minutes>}
-        const uniqueMmIdsFromData = new Set();
 
-        for (const r of tomorrowData) {
-            const mmId = r.r_mm_id;
-            uniqueMmIdsFromData.add(mmId);
+        // 列のx座標が取れた場合、columnInfoにマージ
+        for (let i = 0; i < Math.min(firstRowCells.length, columnInfo.length); i++) {
+            columnInfo[i].x = firstRowCells[i].x;
+            columnInfo[i].cellWidth = firstRowCells[i].width;
+            columnInfo[i].cellHeight = firstRowCells[i].height;
+        }
 
-            if (!occupied[mmId]) occupied[mmId] = new Set();
-            const timeParts = (r.r_time || '').split(':');
-            if (timeParts.length >= 2) {
-                const startMin = parseInt(timeParts[0]) * 60 + parseInt(timeParts[1]);
-                const duration = r.r_minute || 15;
-                // 15分刻みで占有マーク
-                for (let t = startMin; t < startMin + duration; t += 15) {
-                    occupied[mmId].add(t);
+        // 時間グリッド情報
+        const calInfo = window.calendar_info || {};
+        let minTime = 540;  // 9:00
+        let maxTime = 1200; // 20:00
+        if (calInfo.min_time) {
+            const p = calInfo.min_time.split(':');
+            minTime = parseInt(p[0]) * 60 + parseInt(p[1]);
+        }
+        if (calInfo.max_time) {
+            const p = calInfo.max_time.split(':');
+            maxTime = parseInt(p[0]) * 60 + parseInt(p[1]);
+        }
+
+        // 行の高さを推定: td_reserve の height から
+        let rowHeight15min = 0;
+        if (firstRowCells.length > 0 && firstRowCells[0].height > 0) {
+            rowHeight15min = firstRowCells[0].height;  // 1セル = 15分
+        }
+
+        // テーブルヘッダー行の高さ（時間行の開始位置を特定）
+        // 最初のtd_reserveのy座標がヘッダー下端
+        let gridStartY = 0;
+        if (tdReserves.length > 0) {
+            gridStartY = tdReserves[0].getBoundingClientRect().y - bodyRect.y;
+        }
+
+        const totalTimeSlots = (maxTime - minTime) / 15;
+        if (rowHeight15min === 0 && bodyRect.height > 0) {
+            // フォールバック: テーブル高さから推定
+            rowHeight15min = (bodyRect.height - gridStartY) / totalTimeSlots;
+        }
+
+        result.debug.gridInfo = {
+            columns: columnInfo.length,
+            columnNames: columnInfo.map(c => c.name),
+            firstRowCells: firstRowCells.length,
+            rowHeight15min: Math.round(rowHeight15min * 10) / 10,
+            gridStartY: Math.round(gridStartY),
+            bodySize: {w: Math.round(bodyRect.width), h: Math.round(bodyRect.height)},
+            canvasSize: {w: canvas.width, h: canvas.height},
+            dpr: dpr,
+            scaleX: Math.round(scaleX * 100) / 100,
+            scaleY: Math.round(scaleY * 100) / 100,
+            timeRange: {min: minTime, max: maxTime, slots: totalTimeSlots},
+        };
+
+        // 各セルのピクセル色をサンプリング
+        let yellowCount = 0;
+        const staffSlots = {};
+
+        for (let colIdx = 0; colIdx < columnInfo.length; colIdx++) {
+            const col = columnInfo[colIdx];
+            if (!col.x && col.x !== 0) continue;  // x座標不明
+            const colCenterX = col.x + (col.cellWidth || col.width) / 2;
+
+            for (let slot = 0; slot < totalTimeSlots; slot++) {
+                const timeMin = minTime + slot * 15;
+                const cellCenterY = gridStartY + (slot + 0.5) * rowHeight15min;
+
+                // スクリーンショット座標に変換
+                const px = Math.floor(colCenterX * scaleX);
+                const py = Math.floor(cellCenterY * scaleY);
+
+                if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) continue;
+
+                const d = ctx.getImageData(px, py, 1, 1).data;
+                const r = d[0], g = d[1], b = d[2];
+
+                // 空き枠判定: lemonchiffon rgb(255,250,205) 系
+                // R>240, G>240, B>150 で黄色系、(R-B)>20 && (G-B)>20 でグレー除外
+                const isYellow = (r > 240 && g > 240 && b > 150 && (r - b) > 20 && (g - b) > 20);
+
+                // サンプルピクセル（デバッグ用、全列の最初10スロット）
+                if (slot < 10) {
+                    result.debug.samplePixels.push({
+                        col: col.name,
+                        time: Math.floor(timeMin/60) + ':' + String(timeMin%60).padStart(2, '0'),
+                        px, py, r, g, b, isYellow,
+                    });
+                }
+
+                if (isYellow) {
+                    yellowCount++;
+                    if (!staffSlots[col.name]) staffSlots[col.name] = [];
+                    staffSlots[col.name].push(timeMin);
                 }
             }
         }
 
-        // 営業時間のスロット生成（calendar_infoのmin_time〜max_time、15分刻み）
-        const calInfoTime = window.calendar_info || {};
-        let minTime = 540;  // デフォルト 9:00
-        let maxTime = 1200; // デフォルト 20:00
-        if (calInfoTime.min_time) {
-            const parts = calInfoTime.min_time.split(':');
-            minTime = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-        }
-        if (calInfoTime.max_time) {
-            const parts = calInfoTime.max_time.split(':');
-            maxTime = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-        }
-        const allSlots = [];
-        for (let t = minTime; t < maxTime; t += 15) {
-            allSlots.push(t);
-        }
-
-        // 各mm_id（スタッフ列）の空きスロットを計算
-        for (const mmId of uniqueMmIdsFromData) {
-            const occ = occupied[mmId] || new Set();
-            const emptySlots = allSlots.filter(t => !occ.has(t));
-            const staffName = mmIdToName[mmId] || `mm_${mmId}`;
-
-            if (emptySlots.length > 0 && emptySlots.length < allSlots.length) {
-                result.staffSlots[staffName] = emptySlots;
-            }
-        }
+        result.staffSlots = staffSlots;
+        result.debug.yellowCellCount = yellowCount;
 
         return result;
-    }''', tomorrow_str)
+    }''', {'b64': b64, 'tomorrowStr': tomorrow_str})
 
-    # デバッグ情報をログ出力
+    # 結果をログ出力
     debug = slot_data.get('debug', {})
-    logger.info(f"[{clinic_name}] rdata解析: total={debug.get('rdataTotal', 0)}, "
-                f"tomorrow={debug.get('tomorrowCount', 0)}, "
-                f"mmIds={debug.get('mmIds', [])}")
-    logger.info(f"[{clinic_name}] staffSlots keys: {list(slot_data.get('staffSlots', {}).keys())}")
+    grid = debug.get('gridInfo', {})
+    logger.info(f"[{clinic_name}] グリッド: {grid.get('columns', 0)}列, "
+                f"rowH={grid.get('rowHeight15min', 0)}px, "
+                f"gridStartY={grid.get('gridStartY', 0)}, "
+                f"canvas={grid.get('canvasSize', {})}, "
+                f"timeSlots={grid.get('timeRange', {}).get('slots', 0)}")
+    logger.info(f"[{clinic_name}] 列名: {grid.get('columnNames', [])}")
+    logger.info(f"[{clinic_name}] 黄色セル: {debug.get('yellowCellCount', 0)}")
+
+    # サンプルピクセル
+    for sp in debug.get('samplePixels', []):
+        logger.info(f"  [{sp['col']}] {sp['time']}: px=({sp['px']},{sp['py']}) "
+                     f"rgb({sp['r']},{sp['g']},{sp['b']}) yellow={sp['isYellow']}")
+
+    if debug.get('error'):
+        logger.warning(f"[{clinic_name}] {debug['error']}")
 
     # 結果を取得
     chair_slots = slot_data.get('staffSlots', {})
@@ -196,74 +424,6 @@ async def get_gmo_empty_slots(
         logger.info(f"  {staff}: {len(slots)}スロット: {times_str}{extra}")
 
     return chair_slots
-
-
-def _is_yellow_inline_style(style: str) -> bool:
-    """inline style文字列から黄色背景を判定
-
-    例: 'background-color: #ffff00;' or 'background: yellow;' or 'background-color:rgb(255,255,0)'
-    """
-    if not style:
-        return False
-    style = style.lower()
-    # 直接的なカラー名
-    if 'yellow' in style and ('background' in style):
-        return True
-    # hex形式
-    for hex_val in ['#ffff00', '#ff0', '#ffff33', '#ffd700']:
-        if hex_val in style and 'background' in style:
-            return True
-    # rgb形式をbackground内で探す
-    bg_match = re.search(r'background[^;]*rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', style)
-    if bg_match:
-        r, g, b = int(bg_match.group(1)), int(bg_match.group(2)), int(bg_match.group(3))
-        if r > 200 and g > 200 and b < 100:
-            return True
-    return False
-
-
-def _is_yellow_background(bg_color: str) -> bool:
-    """背景色が黄色系かどうかを判定
-
-    RGB値で判定:
-    - R > 200, G > 200, B < 100 → 黄色
-    - または rgb(255, 255, 0) 系
-    """
-    if not bg_color:
-        return False
-
-    # rgb(R, G, B) or rgba(R, G, B, A) をパース
-    bg_color = bg_color.strip().lower()
-
-    if bg_color.startswith('rgb'):
-        try:
-            # rgb(255, 255, 0) or rgba(255, 255, 0, 1)
-            nums = bg_color.replace('rgb', '').replace('a', '').replace('(', '').replace(')', '')
-            parts = [int(x.strip()) for x in nums.split(',')[:3]]
-            r, g, b = parts[0], parts[1], parts[2]
-            # 黄色: R高, G高, B低
-            return r > 200 and g > 200 and b < 100
-        except (ValueError, IndexError):
-            return False
-
-    # CSSカラー名
-    if bg_color in ('yellow', '#ffff00', '#ff0', '#ffff33'):
-        return True
-
-    # hex形式
-    if bg_color.startswith('#'):
-        try:
-            hex_color = bg_color.lstrip('#')
-            if len(hex_color) == 3:
-                hex_color = ''.join(c * 2 for c in hex_color)
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            return r > 200 and g > 200 and b < 100
-        except (ValueError, IndexError):
-            return False
-
-    return False
 
 
 async def scrape_gmo_clinic(
@@ -296,6 +456,11 @@ async def scrape_gmo_clinic(
 
         # 歯科タブ切替
         await switch_to_dental_tab(page, clinic_name)
+
+        # 翌日に遷移
+        tomorrow = datetime.now(JST) + timedelta(days=1)
+        tomorrow_str = tomorrow.strftime('%Y-%m-%d')
+        await navigate_to_tomorrow_gmo(page, clinic_name, tomorrow_str)
 
         # 空き枠取得
         slots = await get_gmo_empty_slots(page, clinic_name)

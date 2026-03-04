@@ -178,6 +178,7 @@ dent-slot-checker/
 ## 更新履歴
 
 - **2026-03-03** 予約ブロックオーバーレイ検出: position:absoluteの予約ブロック（アシスト等）が後続セルをカバーする範囲を追跡し偽空き枠を排除、detect_slot_interval最小有効ギャップ方式に改善（ヒロ10分間隔対応）
+- **2026-03-04** GMO Reserve空き枠精度改善: Screenshot+Canvas APIでピクセル色判定に切替（rdata方式→視覚的黄色セル検出）、翌日カレンダー遷移(view_date URLパラメータ)、空き枠色rgb(255,250,205)判定閾値確定
 - **2026-03-03** GMO Reserve対応: さくら医院歯科（reserve.ne.jp）スクレイパー追加、ログイン→歯科タブ切替→黄色背景空き枠検出
 - **2026-03-03** きらり大森DH祢津精度修正: 予約ブロックのオーバーレイ検出追加（position:absolute+height:NNNpxパース）、ヒロデンタル10分間隔対応（detect_slot_interval最小有効ギャップ方式に変更）
 - **2026-03-03** 町屋精度修正: Stransa slot_interval自動検出バイパス（疎スロットで60→30スナップ→consecutive=1バグ修正）、cancelled_koma再予約済み判定追加（白背景/ストライプのみ空き枠、色付き背景はスキップ）
