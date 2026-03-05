@@ -291,6 +291,20 @@ staff_by_clinic:
     - 上岡
     - ＷＥＢ初診
   ヒロデンタルクリニック:
+    unit_check:
+      enabled: true
+      match_mode: name_contains
+      unit_columns:
+      - 市位
+      - 上手/中村
+      - 長谷川
+      - 赤木/藤森
+      - 衛生士(中山)
+      - 衛生士(尾﨑)
+      - 衛生士(小島)
+      - 衛生士(相澤/藤本)
+      - 衛生士(久保田)/矯相
+      - TC/SP
     all_staff:
     - 上手
     - 赤木
@@ -897,6 +911,25 @@ staff_by_clinic:
     - 橋爪
     - 家後
   長久手さくら歯科・矯正歯科:
+    unit_check:
+      enabled: true
+      match_mode: explicit
+      mapping:
+        Dr伊藤: [伊藤B, 伊藤A]
+        Dr亀川: [亀川]
+        Dr西村: [西村]
+        Dr落合: [ヘルプ]
+        SP・急患: [SP・急患]
+        Dr岡: [矯正]
+        Dr黒濱: [矯正]
+        Dr橋本: [ヘルプ]
+        Dr岩田: [ヘルプ]
+        Dr願興寺: [ヘルプ]
+        DH小森: [DH1, DH2, DH3]
+        DH山本愛: [DH1, DH2, DH3]
+        DH山本真: [DH1, DH2, DH3]
+        DH関口: [DH1, DH2, DH3]
+        DH久保: [DH1, DH2, DH3]
     all_staff:
     - Dr伊藤
     - Dr落合

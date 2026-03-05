@@ -468,6 +468,11 @@ def run_check():
                 results = []
 
                 if stransa_clinics:
+                    # unit_check設定をclinic dictに注入
+                    for c in stransa_clinics:
+                        clinic_rules = staff_by_clinic.get(c['name'], {})
+                        if 'unit_check' in clinic_rules:
+                            c['unit_check'] = clinic_rules['unit_check']
                     logger_t.info("=== Stransa スクレイピング開始 ===")
                     try:
                         r = await scrape_all_stransa_clinics(stransa_clinics, browser=browser)

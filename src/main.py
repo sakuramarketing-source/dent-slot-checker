@@ -238,6 +238,11 @@ async def main_async(
         task_labels.append('dent-sys')
 
     if stransa_clinics:
+        # unit_check設定をclinic dictに注入
+        for c in stransa_clinics:
+            clinic_rules = staff_by_clinic.get(c['name'], {})
+            if 'unit_check' in clinic_rules:
+                c['unit_check'] = clinic_rules['unit_check']
         logger.info("=== Stransa スクレイピング開始 ===")
         scrape_tasks.append(scrape_all_stransa_clinics(
             stransa_clinics,

@@ -437,7 +437,7 @@ def is_staff_column(text: str) -> bool:
         return True
 
     # 特定の役職/カラム名
-    known_columns = ['TC', 'SP急患', 'SP', '急患', 'アシスト', 'TC/SP', '矯正']
+    known_columns = ['TC', 'SP急患', 'SP', '急患', 'アシスト', 'TC/SP', '矯正', 'ヘルプ']
     if text in known_columns:
         return True
 
@@ -901,6 +901,92 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
     return chair_slots
 
 
+async def _scrape_unit_tab(page: Page, clinic_name: str) -> Optional[Dict[str, List[int]]]:
+    """ユニットタブに切り替えて空きスロットを取得"""
+    switched = False
+    selectors = [
+        'button:has-text("ユニット")',
+        'a:has-text("ユニット")',
+        'li:has-text("ユニット")',
+        '[role="tab"]:has-text("ユニット")',
+        'span:has-text("ユニット")',
+        'label:has-text("ユニット")',
+        'div.tab:has-text("ユニット")',
+        'input[value="ユニット"]',
+    ]
+    for sel in selectors:
+        try:
+            btn = page.locator(sel)
+            count = await btn.count()
+            if count > 0:
+                for i in range(min(count, 3)):
+                    el = btn.nth(i)
+                    if await el.is_visible():
+                        await el.click()
+                        await asyncio.sleep(1)
+                        try:
+                            await page.wait_for_selector('table', timeout=10000)
+                        except Exception:
+                            pass
+                        switched = True
+                        logger.info(f"[{clinic_name}] ユニットタブ切替成功: {sel}")
+                        break
+            if switched:
+                break
+        except Exception:
+            continue
+
+    if not switched:
+        logger.warning(f"[{clinic_name}] ユニットタブ未検出")
+        return None
+
+    return await get_stransa_empty_slots(page)
+
+
+def _filter_by_unit(
+    staff_slots: Dict[str, List[int]],
+    unit_slots: Dict[str, List[int]],
+    unit_check: Dict,
+    clinic_name: str
+) -> Dict[str, List[int]]:
+    """スタッフ空き枠をユニット空き枠でフィルタ（AND条件）"""
+    match_mode = unit_check.get('match_mode', 'explicit')
+    mapping = unit_check.get('mapping', {})
+    filtered = {}
+
+    for staff_name, slots in staff_slots.items():
+        # (N)サフィックスを除去してベース名を取得
+        import re
+        base_name = re.sub(r'\(\d+\)$', '', staff_name).strip()
+
+        # このスタッフに連携するユニット列名を取得
+        if match_mode == 'explicit':
+            linked_units = mapping.get(staff_name, []) or mapping.get(base_name, [])
+        else:  # name_contains
+            linked_units = [u for u in unit_slots.keys() if base_name in u]
+
+        if not linked_units:
+            # マッピングなし → フィルタせずそのまま保持
+            filtered[staff_name] = slots
+            logger.info(f"[{clinic_name}] {staff_name}: ユニット連携なし → フィルタスキップ")
+            continue
+
+        # 連携ユニットの空き時間を集約（OR: どれか1つ空いていればOK）
+        unit_available = set()
+        for u_name in linked_units:
+            unit_available.update(unit_slots.get(u_name, []))
+
+        # AND フィルタ: スタッフ空き ∩ ユニット空き
+        kept = [s for s in slots if s in unit_available]
+        removed = len(slots) - len(kept)
+        if removed > 0:
+            logger.info(f"[{clinic_name}] {staff_name}: ユニットフィルタで {removed}枠除外 "
+                        f"(残{len(kept)}/{len(slots)}) 連携={linked_units}")
+        filtered[staff_name] = kept
+
+    return filtered
+
+
 async def scrape_stransa_clinic(
     browser: Browser,
     clinic: Dict[str, str]
@@ -926,8 +1012,19 @@ async def scrape_stransa_clinic(
         if not await navigate_to_tomorrow_stransa(page):
             logger.warning(f"{clinic['name']}: 翌日への移動に失敗")
 
-        # 空きスロットを取得
+        # スタッフタブの空きスロットを取得
         chair_slots = await get_stransa_empty_slots(page)
+
+        # ユニットチェック: スタッフ空き AND ユニット空き
+        unit_check = clinic.get('unit_check')
+        if unit_check and unit_check.get('enabled') and chair_slots:
+            unit_slots = await _scrape_unit_tab(page, clinic['name'])
+            if unit_slots is not None:
+                chair_slots = _filter_by_unit(
+                    chair_slots, unit_slots, unit_check, clinic['name']
+                )
+            else:
+                logger.warning(f"[{clinic['name']}] ユニットタブ取得失敗 → フィルタなしで続行")
 
         return chair_slots
 
