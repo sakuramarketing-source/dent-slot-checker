@@ -175,6 +175,24 @@ dent-slot-checker/
   Dockerfile       コンテナビルド設定
 ```
 
+## 運用コスト（GCP）
+
+### チェック1回あたり
+- Cloud Run従量課金（2GB RAM / 2 CPU, 約4分/回）: **約$0.02〜0.03**（約3〜4円）
+
+### 月額固定費
+| 項目 | 月額 | 備考 |
+|------|------|------|
+| Cloud Run (min-instances=1) | ~$80-100 | 常時起動（コールドスタート回避） |
+| 静的IP・ロードバランサ | ~$3-5 | analytics.sakurashika-g.jp と共用 |
+| Secret Manager | ~$0.10 | clinic-credentials（11分院の認証情報） |
+| GCS | ~$0.50 | staff_rules.yaml + 結果ファイル |
+| 外部API | $0 | DataForSEO/Claude API は未実装 |
+| **合計** | **~$85-106** | |
+
+### コスト削減オプション
+- `min-instances=0` に変更 → 月$80削減（ただしコールドスタート5-10秒発生）
+
 ## 更新履歴
 
 - **2026-03-05** GCS設定マージ: デプロイ時にダッシュボードのユーザー設定（web_booking, memos等）がGit版で上書きされる問題を修正。起動時にDocker imageとGCSをマージし、ユーザー設定を保持
