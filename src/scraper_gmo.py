@@ -290,7 +290,7 @@ async def get_gmo_empty_slots(
             if (colIdx < 0) continue;
 
             // 時間特定
-            const slot = Math.round((rect.y - gridStartY) / cellHeight);
+            const slot = Math.floor((rect.y - gridStartY) / cellHeight + 0.1);
             const timeMin = minTime + slot * 15;
             if (timeMin < minTime || timeMin >= maxTime) continue;
 

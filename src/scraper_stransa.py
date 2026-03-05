@@ -828,9 +828,19 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
 
                     # ⑤ テキストなし + 子要素なし → ピクセル色で空き/ブロック判定
                     elif child_count == 0:
-                        if pixel:
+                        pixels_arr = cell_data.get('pixels', [])
+                        if pixels_arr:
+                            white_count = sum(
+                                1 for r, g, b in pixels_arr
+                                if r > 248 and g > 248 and b > 248
+                            )
+                            if white_count >= 7:  # 9点中7点以上が白
+                                pass  # 空き枠
+                            else:
+                                continue  # 白不十分 → ブロック
+                        elif pixel:
                             r, g, b = pixel
-                            if r > 240 and g > 240 and b > 240:
+                            if r > 248 and g > 248 and b > 248:
                                 pass  # 白ピクセル → 空き枠
                             else:
                                 continue  # グレー/色付き → ブロック
@@ -849,11 +859,14 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                 except Exception:
                     continue
 
-        # 未使用列フィルタ: 予約（waku/テキスト）が1つもない列 = 未使用
+        # 未使用列フィルタ: 予約（waku/テキスト/オーバーレイ）が1つもない列 = 未使用
         # (2)列など、予約が一切入っていない列は実際の空き枠ではない
+        # block_coverageで追跡された列も使用中として認識
+        covered_cols = set(block_coverage.keys())
+        used_cols = booked_cols | covered_cols
         unused_columns = []
         for chair_name in list(chair_slots.keys()):
-            if chair_name not in booked_cols:
+            if chair_name not in used_cols:
                 unused_columns.append(f"{chair_name}({len(chair_slots[chair_name])}slots)")
                 del chair_slots[chair_name]
         if unused_columns:

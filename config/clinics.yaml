@@ -74,7 +74,7 @@ stransa_clinics:
 
   - name: "きた矯正歯科"
     url: "https://apo-toolboxes.stransa.co.jp/"
-    enabled: true
+    enabled: false
 
 # GMO Reserve 分院設定
 # 認証情報(id/password)はSecret Managerで管理
