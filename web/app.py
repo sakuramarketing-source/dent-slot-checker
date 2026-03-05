@@ -31,7 +31,7 @@ def _merge_staff_rules(local_data, gcs_data):
 
     for clinic_name, gcs_config in gcs_clinics.items():
         if clinic_name not in merged_clinics:
-            merged_clinics[clinic_name] = gcs_config
+            continue  # Docker imageにないクリニックはスキップ（削除済み）
         else:
             for key in USER_KEYS:
                 if key in gcs_config:
