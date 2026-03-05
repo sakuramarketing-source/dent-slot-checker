@@ -177,6 +177,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-03-05** Stransaオーバーレイカバレッジ精度修正: Stage2 JSにcellHeight/blockHeight実測値を追加（cellH=20px固定→実測30px等）、オーバーレイ行数の過大推定を解消（名駅さくら大橋5→8スロット、阪上1→2スロット）
 - **2026-03-05** 4件バグ修正: GMO時間ずれ(Math.round→Math.floor)、Stransa未使用列フィルタにblock_coverage追加(名駅さくら阪上・大橋検出)、白閾値248+9点多数決判定(きらり大森Dr秋葉偽空き枠解消)、きた矯正歯科を除外
 - **2026-03-04** GMO Reserve空き枠精度根本修正: elementsFromPoint+div_reserveテキスト検査方式に変更（ピクセル色だけでは空き/予約済を区別不可）、datepicker swipe_moveで翌日遷移（view_dateパラメータ不可→onSelectコールバック経由）、全24スタッフをstaff_rules.yamlに登録
 - **2026-03-03** 予約ブロックオーバーレイ検出: position:absoluteの予約ブロック（アシスト等）が後続セルをカバーする範囲を追跡し偽空き枠を排除、detect_slot_interval最小有効ギャップ方式に改善（ヒロ10分間隔対応）

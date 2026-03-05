@@ -658,6 +658,18 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                     }
                                 }
 
+                                // オーバーレイ高さ: セル高の1.5倍超の子要素を検出
+                                let overlayH = 0;
+                                for (const ch of cell.children) {
+                                    const chRect = ch.getBoundingClientRect();
+                                    const chH = Math.round(chRect.height);
+                                    if (chH > rect.height * 1.5) {
+                                        overlayH = Math.max(overlayH, chH);
+                                    }
+                                }
+                                const rowH = cell.parentElement
+                                    ? cell.parentElement.getBoundingClientRect().height : 0;
+
                                 return {
                                     text: (cell.textContent || '').trim(),
                                     className: cell.className || '',
@@ -668,6 +680,8 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                                     innerHTML: cell.innerHTML.substring(0, 200),
                                     px: Math.floor(cx),
                                     py: Math.floor(cy),
+                                    cellHeight: Math.round(rowH || rect.height || 0),
+                                    blockHeight: overlayH,
                                     pixel: pixel,
                                     pixels: pixels
                                 };
@@ -763,7 +777,7 @@ async def get_stransa_empty_slots(page: Page) -> Dict[str, List[int]]:
                             block_height = int(h_match.group(1))
                     # cellHeightが0の場合フォールバック
                     if cell_height == 0:
-                        cell_height = 20  # Stransa標準行高の推定値
+                        cell_height = 30  # フォールバック（Stransa実測29px に近い値）
                     if block_height > 0 and child_count > 0:
                         rows_covered = block_height // cell_height
                         if rows_covered > 1:
