@@ -19,8 +19,8 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
     if config_dir is None:
         config_dir = Path(__file__).parent.parent / 'config'
 
-    # Cloud RunではGCSから最新のstaff_rules.yamlを取得
-    download_from_gcs('config/staff_rules.yaml', str(config_dir / 'staff_rules.yaml'))
+    # staff_rules.yamlのGCS同期はweb/app.py起動時マージで一元管理
+    # ここではダウンロードしない（ダッシュボードのユーザー設定を上書きしないため）
 
     clinics_config = load_yaml(config_dir / 'clinics.yaml')
     staff_rules = load_yaml(config_dir / 'staff_rules.yaml')

@@ -11,16 +11,67 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from web.routes import main, staff, clinics, rules, results
 
 
-def _sync_gcs_on_startup(config_path: str):
-    """起動時にGCSから設定ファイルをダウンロード"""
-    try:
-        from src.gcs_helper import download_from_gcs
-        staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
-        if download_from_gcs('config/staff_rules.yaml', staff_rules_path):
-            print("[STARTUP] GCS同期完了: staff_rules.yaml", flush=True)
-            staff._gcs_loaded = True
+def _merge_staff_rules(local_data, gcs_data):
+    """Docker image（コード管理）とGCS（ユーザー管理）をマージ
+
+    コード管理キー（unit_check等）はDocker imageから、
+    ユーザー管理キー（web_booking, memos等）はGCSから保持。
+    """
+    import copy
+    merged = copy.deepcopy(local_data)
+
+    # ユーザーがダッシュボードで管理するキー（GCSから保持）
+    USER_KEYS = {
+        'web_booking', 'memos', 'tags', 'disabled', 'slot_threshold',
+        'doctors', 'hygienists', 'orthodontists', 'all_staff',
+    }
+
+    gcs_clinics = gcs_data.get('staff_by_clinic', {})
+    merged_clinics = merged.setdefault('staff_by_clinic', {})
+
+    for clinic_name, gcs_config in gcs_clinics.items():
+        if clinic_name not in merged_clinics:
+            merged_clinics[clinic_name] = gcs_config
         else:
+            for key in USER_KEYS:
+                if key in gcs_config:
+                    merged_clinics[clinic_name][key] = gcs_config[key]
+
+    return merged
+
+
+def _sync_gcs_on_startup(config_path: str):
+    """起動時にGCSのユーザー設定とDocker imageの構造設定をマージ"""
+    try:
+        import yaml
+        import tempfile
+        from src.gcs_helper import download_from_gcs, upload_to_gcs
+
+        staff_rules_path = os.path.join(config_path, 'staff_rules.yaml')
+
+        # GCSから一時ファイルにダウンロード
+        tmp_path = os.path.join(tempfile.gettempdir(), 'gcs_staff_rules.yaml')
+        if not download_from_gcs('config/staff_rules.yaml', tmp_path):
             print("[STARTUP] GCS同期スキップ（ローカル環境 or GCSにファイルなし）", flush=True)
+            staff._gcs_loaded = True
+            return
+
+        # Docker image版とGCS版をマージ
+        with open(staff_rules_path, 'r', encoding='utf-8') as f:
+            local_data = yaml.safe_load(f) or {}
+        with open(tmp_path, 'r', encoding='utf-8') as f:
+            gcs_data = yaml.safe_load(f) or {}
+
+        merged = _merge_staff_rules(local_data, gcs_data)
+
+        with open(staff_rules_path, 'w', encoding='utf-8') as f:
+            yaml.dump(merged, f, allow_unicode=True, default_flow_style=False)
+
+        # マージ結果をGCSにもアップロード
+        upload_to_gcs(staff_rules_path, 'config/staff_rules.yaml')
+
+        print("[STARTUP] GCSマージ同期完了: staff_rules.yaml", flush=True)
+        staff._gcs_loaded = True
     except Exception as e:
         print(f"[STARTUP] GCS同期失敗: {e}", flush=True)
 
