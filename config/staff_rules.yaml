@@ -972,3 +972,55 @@ staff_by_clinic:
     - DH関口
     - DH山本愛
     - DH久保
+  イーアス春日井歯科:
+    all_staff:
+    - Dr角田🐹
+    - Drなかじー🦈
+    - Dr TAKA🦍
+    - Dr鈴木秀🐭
+    - Drパーリィ🐼
+    - Dr加藤🦕
+    - Dr大沼🐢
+    - Dr梶🏎️
+    - DH水野
+    - DH林
+    - DH西尾
+    - DH前澤
+    - DH秋枝
+    - DH小野
+    - ヘルプDH
+    - TC
+    - sp急患
+    doctors:
+    - Dr角田🐹
+    - Drなかじー🦈
+    - Dr TAKA🦍
+    - Dr鈴木秀🐭
+    - Drパーリィ🐼
+    - Dr加藤🦕
+    - Dr大沼🐢
+    hygienists:
+    - DH水野
+    - DH林
+    - DH西尾
+    - DH前澤
+    - DH秋枝
+    - DH小野
+    - ヘルプDH
+    orthodontists:
+    - Dr梶🏎️
+    web_booking:
+    - Dr角田🐹
+    - Drなかじー🦈
+    - Dr TAKA🦍
+    - Dr鈴木秀🐭
+    - Drパーリィ🐼
+    - Dr加藤🦕
+    - Dr大沼🐢
+    - DH水野
+    - DH林
+    - DH西尾
+    - DH前澤
+    - DH秋枝
+    - DH小野
+    - ヘルプDH
