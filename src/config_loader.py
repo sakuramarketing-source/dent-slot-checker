@@ -60,14 +60,25 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
             clinic.setdefault('id', cred['id'])
             clinic.setdefault('password', cred['password'])
 
+    # Plum 分院
+    plum_clinics = clinics_config.get('plum_clinics', [])
+    plum_cred_map = {c['name']: c for c in credentials.get('plum_clinics', [])}
+    for clinic in plum_clinics:
+        clinic['system'] = 'plum'
+        cred = plum_cred_map.get(clinic.get('name'))
+        if cred:
+            clinic.setdefault('id', cred['id'])
+            clinic.setdefault('password', cred['password'])
+
     # 全分院を統合
-    all_clinics = dent_sys_clinics + stransa_clinics + gmo_clinics
+    all_clinics = dent_sys_clinics + stransa_clinics + gmo_clinics + plum_clinics
 
     return {
         'clinics': all_clinics,
         'dent_sys_clinics': dent_sys_clinics,
         'stransa_clinics': stransa_clinics,
         'gmo_clinics': gmo_clinics,
+        'plum_clinics': plum_clinics,
         'settings': clinics_config.get('settings', {}),
         'staff_categories': staff_rules.get('staff_categories', {}),
         'special_rules': staff_rules.get('special_rules', {}),

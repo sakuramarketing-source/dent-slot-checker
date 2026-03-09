@@ -87,6 +87,16 @@ gmo_clinics:
     id: "kouhou"
     password: "Kouhou1qaz"
 
+# Plum 分院設定
+plum_clinics:
+  - name: "イーアス春日井歯科"
+    url: "https://iias-kasugai.plum-link.com/#/books"
+    enabled: true
+    system: "plum"
+    device_name: "瀧田セカンドPC"
+    id: "admin"
+    password: "IiasKasugai"
+
 # 共通設定
 settings:
   consecutive_slots_required: 6

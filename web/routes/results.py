@@ -442,18 +442,26 @@ def run_check():
             dent_sys_clinics = [c for c in config.get('dent_sys_clinics', []) if c.get('enabled', True)]
             stransa_clinics = [c for c in config.get('stransa_clinics', []) if c.get('enabled', True)]
             gmo_clinics = [c for c in config.get('gmo_clinics', []) if c.get('enabled', True)]
+            plum_clinics = [c for c in config.get('plum_clinics', []) if c.get('enabled', True)]
 
             if system_filter == 'dent-sys':
                 stransa_clinics = []
                 gmo_clinics = []
+                plum_clinics = []
             elif system_filter == 'stransa':
                 dent_sys_clinics = []
                 gmo_clinics = []
+                plum_clinics = []
             elif system_filter == 'gmo':
                 dent_sys_clinics = []
                 stransa_clinics = []
+                plum_clinics = []
+            elif system_filter == 'plum':
+                dent_sys_clinics = []
+                stransa_clinics = []
+                gmo_clinics = []
 
-            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院, GMO: {len(gmo_clinics)}分院")
+            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院, GMO: {len(gmo_clinics)}分院, Plum: {len(plum_clinics)}分院")
 
             all_results = []
             total_clinics = 0
@@ -506,6 +514,17 @@ def run_check():
                         results.append(('gmo', e))
                         logger_t.error(f"GMO失敗: {e}")
 
+                if plum_clinics:
+                    from src.scraper_plum import scrape_all_plum_clinics
+                    logger_t.info("=== Plum スクレイピング開始 ===")
+                    try:
+                        r = await scrape_all_plum_clinics(plum_clinics, browser=browser)
+                        results.append(('plum', r))
+                        logger_t.info(f"=== Plum 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('plum', e))
+                        logger_t.error(f"Plum失敗: {e}")
+
                 return results
 
             scrape_results = run_async(_scrape_all())
@@ -529,7 +548,7 @@ def run_check():
             sync_output_from_gcs(output_path)
 
             systems_in_results = set(r.get('system') for r in all_results)
-            missing_systems = {'dent-sys', 'stransa', 'gmo'} - systems_in_results
+            missing_systems = {'dent-sys', 'stransa', 'gmo', 'plum'} - systems_in_results
             if missing_systems and all_results:
                 merged = _merge_missing_systems(
                     all_results, systems_in_results, output_path, check_date
