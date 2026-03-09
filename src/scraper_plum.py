@@ -116,7 +116,8 @@ async def navigate_to_tomorrow_plum(page, clinic_name: str) -> bool:
         return False
 
 
-async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
+async def get_plum_empty_slots(page, clinic_name: str,
+                               clinic: dict = None) -> Dict[str, List[int]]:
     """
     Plumカレンダーから空きスロットを検出
 
@@ -271,14 +272,34 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
         for i in range(len(time_labels) - 1):
             t1 = time_labels[i]
             t2 = time_labels[i + 1]
-            # t1の時刻から t2の時刻の直前まで、15分刻みで追加
             minutes = t1['minutes']
             while minutes < t2['minutes']:
-                # y座標を線形補間
                 ratio = (minutes - t1['minutes']) / (t2['minutes'] - t1['minutes'])
                 y = t1['y'] + ratio * (t2['y'] - t1['y'])
                 time_points.append({'minutes': minutes, 'y': y})
                 minutes += check_interval
+
+        # 営業時間フィルタ（営業外の偽空きを排除）
+        start_minutes = 10 * 60   # 10:00
+        end_minutes = 19 * 60     # 19:00
+        time_points = [tp for tp in time_points
+                       if start_minutes <= tp['minutes'] < end_minutes]
+
+        # 昼休みフィルタ（カレンダーにブロックがない昼休みを除外）
+        clinic = clinic or {}
+        lunch = clinic.get('lunch_break', {})
+        if lunch:
+            def _parse_hm(s):
+                h, m = s.split(':')
+                return int(h) * 60 + int(m)
+            ls = _parse_hm(lunch['start'])
+            le = _parse_hm(lunch['end'])
+            time_points = [tp for tp in time_points
+                           if not (ls <= tp['minutes'] < le)]
+
+        logger.info(f"[{clinic_name}] チェック対象: {len(time_points)}ポイント "
+                    f"({start_minutes//60}:00-{end_minutes//60}:00, "
+                    f"昼休み除外={'あり' if lunch else 'なし'})")
 
         for header in headers:
             staff_name = header['name']
@@ -299,8 +320,10 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
                     x_overlap = block['x'] < col_right and block_right > col_x
 
                     # 時間の重なり判定（y座標、チェックポイントがブロック内か）
+                    # ブロックを上下12pxずつ拡張してピクセルギャップを吸収
+                    # 12px ≒ 約8分（15分チェック間隔に対して十分な許容幅）
                     block_bottom = block['y'] + block['height']
-                    y_overlap = check_y >= block['y'] - 2 and check_y < block_bottom - 2
+                    y_overlap = check_y >= block['y'] - 12 and check_y < block_bottom + 12
 
                     if x_overlap and y_overlap:
                         is_booked = True
@@ -308,6 +331,21 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
 
                 if not is_booked:
                     empty_slots.append(check_minutes)
+
+            # 孤立した偽空きスロットを除去
+            # 前後30分以内に予約がある場合、間の1-2スロットはピクセルギャップとして除去
+            if empty_slots and len(empty_slots) < len(time_points):
+                booked_set = set(tp['minutes'] for tp in time_points) - set(empty_slots)
+                filtered_empty = []
+                for slot in empty_slots:
+                    # この空きスロットの前後30分以内に予約があるかチェック
+                    has_before = any(b < slot and slot - b <= 30 for b in booked_set)
+                    has_after = any(b > slot and b - slot <= 30 for b in booked_set)
+                    if has_before and has_after:
+                        # 前後に予約あり → ピクセルギャップの偽空き → 除去
+                        continue
+                    filtered_empty.append(slot)
+                empty_slots = filtered_empty
 
             staff_slots[staff_name] = empty_slots
             total_points = len(time_points)
@@ -343,7 +381,7 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
         if not await navigate_to_tomorrow_plum(page, clinic_name):
             logger.warning(f"[{clinic_name}] 翌日移動失敗、当日のデータで続行")
 
-        slots = await get_plum_empty_slots(page, clinic_name)
+        slots = await get_plum_empty_slots(page, clinic_name, clinic=clinic)
 
         # name_mapping適用（カレンダー表示名→スタッフ管理名）
         name_mapping = clinic.get('name_mapping', {})

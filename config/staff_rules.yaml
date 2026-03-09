@@ -777,6 +777,9 @@ staff_by_clinic:
     - 塩澤
     - 内山
   イーアス春日井歯科:
+    lunch_break:
+      start: "13:00"
+      end: "14:00"
     name_mapping:
       Dr角田🐹: 角田
       Drなかじー🦈: 中嶋

@@ -276,11 +276,13 @@ async def main_async(
         task_labels.append('gmo')
 
     if plum_clinics:
-        # name_mapping設定をclinic dictに注入
+        # name_mapping, lunch_break設定をclinic dictに注入
         for c in plum_clinics:
             clinic_rules = staff_by_clinic.get(c['name'], {})
             if 'name_mapping' in clinic_rules:
                 c['name_mapping'] = clinic_rules['name_mapping']
+            if 'lunch_break' in clinic_rules:
+                c['lunch_break'] = clinic_rules['lunch_break']
         logger.info("=== Plum スクレイピング開始 ===")
         scrape_tasks.append(scrape_all_plum_clinics(
             plum_clinics,
