@@ -131,9 +131,15 @@ def get_all_staff():
     # マージした結果を作成（開院順）
     result = {}
 
-    # CLINIC_ORDER順 + 未知のクリニックは末尾
-    all_clinic_names = set(staff_from_results.keys()) | set(staff_by_clinic.keys())
-    ordered_names = list(CLINIC_ORDER)
+    # clinics.yamlに存在するクリニックのみ表示（ゴースト排除）
+    valid_clinic_names = set()
+    for section in ['clinics', 'stransa_clinics', 'gmo_clinics', 'plum_clinics']:
+        for clinic in clinics_config.get(section, []):
+            valid_clinic_names.add(clinic['name'])
+
+    # CLINIC_ORDER順 + 未知のクリニックは末尾（有効クリニックのみ）
+    all_clinic_names = (set(staff_from_results.keys()) | set(staff_by_clinic.keys())) & valid_clinic_names
+    ordered_names = [n for n in CLINIC_ORDER if n in valid_clinic_names]
     for name in sorted(all_clinic_names):
         if name not in ordered_names:
             ordered_names.append(name)

@@ -21,9 +21,9 @@ def _merge_staff_rules(local_data, gcs_data):
     merged = copy.deepcopy(local_data)
 
     # ユーザーがダッシュボードで管理するキー（GCSから保持）
+    # doctors/hygienists/orthodontists/all_staff はgit管理（Dockerイメージが正）
     USER_KEYS = {
         'web_booking', 'memos', 'tags', 'disabled', 'slot_threshold',
-        'doctors', 'hygienists', 'orthodontists', 'all_staff',
     }
 
     gcs_clinics = gcs_data.get('staff_by_clinic', {})
