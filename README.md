@@ -4,7 +4,7 @@
 
 ## 概要
 
-さくら会グループの各分院が利用する予約システム（dent-sys.net / Stransa / GMO Reserve）にログインし、翌日の予約状況をスクレイピング。30分以上の連続空き枠を検出し、分院ごとの空き状況をダッシュボードで確認できる。
+さくら会グループの各分院が利用する予約システム（dent-sys.net / Stransa / GMO Reserve / Plum）にログインし、翌日の予約状況をスクレイピング。30分以上の連続空き枠を検出し、分院ごとの空き状況をダッシュボードで確認できる。
 
 ## 対応システム
 
@@ -13,6 +13,7 @@
 | dent-sys.net | 5分 or 10分（自動検出） | 6連続 or 3連続スロット |
 | Stransa (Apotool & Box) | 15分 | 2連続スロット |
 | GMO Reserve (reserve.ne.jp) | 15分 | div_reserveオーバーレイなし+非グレー |
+| Plum (plum-link.com) | 15分 | 色付きブロック未カバー時間帯 |
 
 ## 機能
 
@@ -25,7 +26,7 @@
 ## データフロー
 
 ```
-予約システム (dent-sys.net / Stransa / GMO Reserve)
+予約システム (dent-sys.net / Stransa / GMO Reserve / Plum)
   ↓ Playwright スクレイピング
 空きスロット収集 (5分/10分/15分 自動検出)
   ↓ slot_analyzer.py
@@ -133,6 +134,12 @@ stransa_clinics:            # Stransa 分院
     url: "https://user.stransa.co.jp/login"
     enabled: true
 
+plum_clinics:               # Plum 分院
+  - name: "医院名"
+    url: "https://xxx.plum-link.com/#/books"
+    enabled: true
+    device_name: "端末名"
+
 settings:
   consecutive_slots_required: 6   # 30分空き枠に必要な連続スロット数
   minimum_blocks_required: 4      # 不足判定の最小空き枠数
@@ -162,6 +169,8 @@ dent-slot-checker/
     main.py        メイン処理（スクレイピング→解析→出力）
     scraper.py     dent-sys.net スクレイパー（並列実行対応）
     scraper_stransa.py  Stransa スクレイパー
+    scraper_gmo.py      GMO Reserve スクレイパー
+    scraper_plum.py     Plum スクレイパー（name_mapping対応）
     slot_analyzer.py    空きスロット解析
     config_loader.py    設定読み込み（Secret Manager統合）
     secret_manager.py   GCP Secret Manager連携
@@ -183,18 +192,19 @@ dent-slot-checker/
 ### 月額固定費
 | 項目 | 月額 | 備考 |
 |------|------|------|
-| Cloud Run (min-instances=1) | ~$80-100 | 常時起動（コールドスタート回避） |
+| Cloud Run (min-instances=0) | ~$0-5 | 従量課金のみ（コールドスタート5-10秒） |
 | 静的IP・ロードバランサ | ~$3-5 | analytics.sakurashika-g.jp と共用 |
 | Secret Manager | ~$0.10 | clinic-credentials（11分院の認証情報） |
 | GCS | ~$0.50 | staff_rules.yaml + 結果ファイル |
 | 外部API | $0 | DataForSEO/Claude API は未実装 |
-| **合計** | **~$85-106** | |
+| **合計** | **~$4-11** | |
 
 ### コスト削減オプション
 - `min-instances=0` に変更 → 月$80削減（ただしコールドスタート5-10秒発生）
 
 ## 更新履歴
 
+- **2026-03-09** Plumスクレイパー追加: イーアス春日井歯科（plum-link.com）対応。React/MUI SPA対応（ログイン・翌日遷移・空き枠検出）、15分刻みスロット検出、name_mappingによるカレンダー表示名→スタッフ管理名変換
 - **2026-03-09** ヘルプパネル追加: 全ページ共通のスライドアウト式マニュアルを実装（右側パネル、操作しながら閲覧可能）。アクセスアカウント追加（sakurakai.daini@gmail.com）。コスト削減のためmin-instances=0に変更
 - **2026-03-05** GCS設定マージ: デプロイ時にダッシュボードのユーザー設定（web_booking, memos等）がGit版で上書きされる問題を修正。起動時にDocker imageとGCSをマージし、ユーザー設定を保持
 - **2026-03-05** ユニットチェック機能: 長久手・ヒロデンタルでスタッフ空き枠とユニット空き枠のAND条件フィルタを追加（スタッフに空きがあってもユニットが埋まっていれば除外）
