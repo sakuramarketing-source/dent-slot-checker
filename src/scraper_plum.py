@@ -80,7 +80,7 @@ async def navigate_to_tomorrow_plum(page, clinic_name: str) -> bool:
             cal_day = page.locator(f'div:text-is("{tomorrow_day}")').first
             if await cal_day.count() > 0:
                 await cal_day.click()
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(5000)
                 clicked = True
 
         # 日付確認
@@ -102,7 +102,7 @@ async def navigate_to_tomorrow_plum(page, clinic_name: str) -> bool:
                     box = await cell.bounding_box()
                     if box and box['x'] < 320:  # サイドメニュー内
                         await cell.click()
-                        await page.wait_for_timeout(3000)
+                        await page.wait_for_timeout(5000)
                         break
             except Exception:
                 continue
@@ -121,23 +121,53 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
     Plumカレンダーから空きスロットを検出
 
     アプローチ:
-    1. ヘッダー行からスタッフ列（名前 + x座標）を取得
-    2. カレンダーグリッド内の予約ブロック（色付きDIV）を全取得
-    3. 各スタッフ列で予約ブロックが無い時間帯 = 空き枠
+    1. 予約ブロックの描画完了を待機（React SPAの非同期レンダリング対応）
+    2. ヘッダー行からスタッフ列（名前 + x座標）を取得
+    3. カレンダーグリッド内の予約ブロック（色付きDIV）を全取得
+    4. 各スタッフ列で予約ブロックが無い時間帯 = 空き枠
     """
     try:
+        # React SPAの非同期レンダリング完了を待機
+        # 予約ブロック数が安定するまでポーリング（最大15秒）
+        prev_block_count = 0
+        stable_count = 0
+        for _ in range(15):
+            block_count = await page.evaluate('''() => {
+                let count = 0;
+                for (const div of document.querySelectorAll('div')) {
+                    const rect = div.getBoundingClientRect();
+                    if (rect.width < 30 || rect.height < 8) continue;
+                    if (rect.y < 80) continue;
+                    const bg = getComputedStyle(div).backgroundColor;
+                    if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'rgb(255, 255, 255)') continue;
+                    count++;
+                }
+                return count;
+            }''')
+            if block_count > 0 and block_count == prev_block_count:
+                stable_count += 1
+                if stable_count >= 2:
+                    break
+            else:
+                stable_count = 0
+            prev_block_count = block_count
+            await page.wait_for_timeout(1000)
+
+        logger.info(f"[{clinic_name}] 描画完了待機: {prev_block_count}要素検出")
+
         result = await page.evaluate('''() => {
             // === ステップ1: スタッフ列ヘッダーを取得 ===
-            // ヘッダー行: 色付きDIVでスタッフ名が表示（y座標が小さい、幅165px付近）
+            // ヘッダー行: 色付きDIVでスタッフ名が表示（y=70-95付近）
+            // 列数が多い場合に幅が狭くなるため、幅の下限を緩めに設定
             const headerDivs = [];
             const allDivs = document.querySelectorAll('div');
             for (const div of allDivs) {
                 const rect = div.getBoundingClientRect();
                 const style = getComputedStyle(div);
                 const bg = style.backgroundColor;
-                // ヘッダー行の条件: y=70-95付近、幅150-180px、高さ10-20px、色付き
-                if (rect.y > 60 && rect.y < 100 && rect.width > 140 && rect.width < 200 &&
-                    rect.height > 8 && rect.height < 25 &&
+                if (rect.y > 60 && rect.y < 100 &&
+                    rect.width > 60 && rect.width < 300 &&
+                    rect.height > 5 && rect.height < 30 &&
                     bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'rgb(255, 255, 255)' &&
                     bg !== 'rgb(240, 246, 255)') {
                     const text = div.textContent.trim();
@@ -155,43 +185,45 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
             // === ステップ2: 時間軸の位置マッピング ===
             // position:absoluteの時間ラベル（09:30, 10:00, ...）
             const timeLabels = [];
+            const seenTimes = new Set();
             for (const div of allDivs) {
                 const text = div.textContent.trim();
                 if (text.match(/^\\d{2}:\\d{2}$/) && div.children.length === 0) {
                     const style = getComputedStyle(div);
                     if (style.position === 'absolute') {
                         const rect = div.getBoundingClientRect();
-                        const [h, m] = text.split(':').map(Number);
-                        timeLabels.push({
-                            time: text,
-                            minutes: h * 60 + m,
-                            y: rect.y
-                        });
+                        // 左側のラベルのみ取得（右側に重複ラベルがある）
+                        if (rect.x < 500 && !seenTimes.has(text)) {
+                            seenTimes.add(text);
+                            const [h, m] = text.split(':').map(Number);
+                            timeLabels.push({
+                                time: text,
+                                minutes: h * 60 + m,
+                                y: rect.y
+                            });
+                        }
                     }
                 }
             }
             timeLabels.sort((a, b) => a.y - b.y);
 
             // === ステップ3: 予約ブロックを全取得 ===
-            // Plumの予約ブロック: position:staticの色付きDIV（カレンダーグリッド内）
             const calendarTop = timeLabels.length > 0 ? timeLabels[0].y - 20 : 90;
+            // サイドメニュー右端 = 最も左にあるヘッダーのx座標 - 5px
+            const sideMenuRight = headerDivs.length > 0
+                ? Math.min(...headerDivs.map(h => h.x)) - 5
+                : 360;
             const blocks = [];
             for (const div of allDivs) {
                 const rect = div.getBoundingClientRect();
-                if (rect.width < 50 || rect.height < 8) continue;
-                if (rect.x < 360) continue; // 時間ラベル+サイドメニューをスキップ
-                if (rect.y < calendarTop) continue; // ヘッダーより上をスキップ
+                if (rect.width < 30 || rect.height < 8) continue;
+                if (rect.x < sideMenuRight) continue;
+                if (rect.y < calendarTop) continue;
 
                 const style = getComputedStyle(div);
                 const bg = style.backgroundColor;
                 if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'rgb(255, 255, 255)') continue;
 
-                // 予約ブロックの色パターン
-                // rgb(150,150,150) = 通常予約（グレー）
-                // rgb(245,127,23) = 要注意予約（オレンジ）
-                // rgb(240,246,255) = メモ/重要/DA枠
-                // rgb(255,205,210) = ピンク系
-                // その他の色付き = 予約あり
                 const match = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
                 if (!match) continue;
                 const [_, r, g, b] = match.map(Number);
@@ -222,11 +254,12 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
                     f"時間ラベル: {len(time_labels)}個, 予約ブロック: {len(blocks)}個")
 
         if not headers or not time_labels:
-            logger.warning(f"[{clinic_name}] ヘッダーまたは時間ラベルが取得できません")
+            logger.warning(f"[{clinic_name}] ヘッダーまたは時間ラベルが取得できません "
+                          f"(headers={len(headers)}, timeLabels={len(time_labels)})")
             return {}
 
         for h in headers:
-            logger.info(f"  スタッフ: {h['name']} (x={h['x']})")
+            logger.info(f"  スタッフ: {h['name']} (x={h['x']}, w={h['width']})")
 
         # === ステップ4: 各スタッフ列の空き枠を計算 ===
         staff_slots = {}
@@ -277,12 +310,15 @@ async def get_plum_empty_slots(page, clinic_name: str) -> Dict[str, List[int]]:
                     empty_slots.append(check_minutes)
 
             staff_slots[staff_name] = empty_slots
+            total_points = len(time_points)
+            booked = total_points - len(empty_slots)
             if empty_slots:
                 times_str = [f"{m//60}:{m%60:02d}" for m in empty_slots[:5]]
-                logger.info(f"  {staff_name}: {len(empty_slots)}スロット空き "
+                logger.info(f"  {staff_name}: 予約済={booked}/{total_points}, "
+                           f"空き={len(empty_slots)} "
                            f"(例: {', '.join(times_str)}...)")
             else:
-                logger.info(f"  {staff_name}: 空きなし")
+                logger.info(f"  {staff_name}: 予約済={booked}/{total_points}, 空きなし")
 
         return staff_slots
 
