@@ -308,6 +308,16 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
             logger.warning(f"[{clinic_name}] 翌日移動失敗、当日のデータで続行")
 
         slots = await get_plum_empty_slots(page, clinic_name)
+
+        # name_mapping適用（カレンダー表示名→スタッフ管理名）
+        name_mapping = clinic.get('name_mapping', {})
+        if name_mapping and slots:
+            mapped_slots = {}
+            for name, times in slots.items():
+                mapped_name = name_mapping.get(name, name)
+                mapped_slots[mapped_name] = times
+            slots = mapped_slots
+
         return slots
     except Exception as e:
         logger.error(f"[{clinic_name}] スクレイピングエラー: {e}")

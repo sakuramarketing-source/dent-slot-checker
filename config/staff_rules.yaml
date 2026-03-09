@@ -776,6 +776,79 @@ staff_by_clinic:
     - 兼原
     - 塩澤
     - 内山
+  イーアス春日井歯科:
+    name_mapping:
+      Dr角田🐹: 角田
+      Drなかじー🦈: 中嶋
+      Dr TAKA🦍: 川名A
+      Dr鈴木秀🐭: 鈴木秀
+      Drパーリィ🐼: 鈴木瑠
+      Dr加藤🦕: 加藤
+      Dr大沼🐢: 大沼
+      Dr梶🏎️: 梶
+      DH水野: 水野
+      DH林: 林
+      DH西尾: 西尾
+      DH前澤: 前澤
+      DH秋枝: 秋枝
+      DH小野: 小野
+    all_staff:
+    - 角田
+    - 中嶋
+    - 川名A
+    - 鈴木秀
+    - 鈴木瑠
+    - 加藤
+    - 大沼
+    - 水野
+    - 林
+    - 西尾
+    - 前澤
+    - 秋枝
+    - 小野
+    - ヘルプDH
+    - TC
+    - 梶 相談
+    - 梶 ワイヤー
+    - 梶 インビザ小
+    - 梶 なんでも①
+    - sp急患
+    doctors:
+    - 角田
+    - 中嶋
+    - 川名A
+    - 鈴木秀
+    - 鈴木瑠
+    - 加藤
+    - 大沼
+    hygienists:
+    - 水野
+    - 林
+    - 西尾
+    - 前澤
+    - 秋枝
+    - 小野
+    - ヘルプDH
+    orthodontists:
+    - 梶 相談
+    - 梶 ワイヤー
+    - 梶 インビザ小
+    - 梶 なんでも①
+    web_booking:
+    - 角田
+    - 中嶋
+    - 川名A
+    - 鈴木秀
+    - 鈴木瑠
+    - 加藤
+    - 大沼
+    - 水野
+    - 林
+    - 西尾
+    - 前澤
+    - 秋枝
+    - 小野
+    - ヘルプDH
   町屋さくら歯科・矯正歯科:
     all_staff:
     - 黒潮
@@ -972,55 +1045,3 @@ staff_by_clinic:
     - DH関口
     - DH山本愛
     - DH久保
-  イーアス春日井歯科:
-    all_staff:
-    - Dr角田🐹
-    - Drなかじー🦈
-    - Dr TAKA🦍
-    - Dr鈴木秀🐭
-    - Drパーリィ🐼
-    - Dr加藤🦕
-    - Dr大沼🐢
-    - Dr梶🏎️
-    - DH水野
-    - DH林
-    - DH西尾
-    - DH前澤
-    - DH秋枝
-    - DH小野
-    - ヘルプDH
-    - TC
-    - sp急患
-    doctors:
-    - Dr角田🐹
-    - Drなかじー🦈
-    - Dr TAKA🦍
-    - Dr鈴木秀🐭
-    - Drパーリィ🐼
-    - Dr加藤🦕
-    - Dr大沼🐢
-    hygienists:
-    - DH水野
-    - DH林
-    - DH西尾
-    - DH前澤
-    - DH秋枝
-    - DH小野
-    - ヘルプDH
-    orthodontists:
-    - Dr梶🏎️
-    web_booking:
-    - Dr角田🐹
-    - Drなかじー🦈
-    - Dr TAKA🦍
-    - Dr鈴木秀🐭
-    - Drパーリィ🐼
-    - Dr加藤🦕
-    - Dr大沼🐢
-    - DH水野
-    - DH林
-    - DH西尾
-    - DH前澤
-    - DH秋枝
-    - DH小野
-    - ヘルプDH
