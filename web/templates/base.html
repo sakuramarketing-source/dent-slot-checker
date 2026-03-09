@@ -21,11 +21,135 @@
         {% if user_email %}
         <div class="nav-user">{{ user_email }}</div>
         {% endif %}
+        <button class="help-btn" onclick="toggleHelpPanel()" title="ヘルプ">?</button>
     </nav>
 
     <main class="container">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- ヘルプパネル -->
+    <aside class="help-panel" id="helpPanel">
+        <div class="help-panel-header">
+            <h2>ヘルプ</h2>
+            <button class="help-close-btn" onclick="toggleHelpPanel()">&times;</button>
+        </div>
+        <nav class="help-nav">
+            <button class="help-nav-btn active" data-section="dashboard" onclick="showHelpSection('dashboard')">ダッシュボード</button>
+            <button class="help-nav-btn" data-section="staff" onclick="showHelpSection('staff')">スタッフ管理</button>
+            <button class="help-nav-btn" data-section="clinics" onclick="showHelpSection('clinics')">分院管理</button>
+            <button class="help-nav-btn" data-section="rules" onclick="showHelpSection('rules')">ルール設定</button>
+            <button class="help-nav-btn" data-section="results" onclick="showHelpSection('results')">結果一覧</button>
+        </nav>
+        <div class="help-content">
+            <div class="help-section active" id="help-dashboard">
+                <h3>ダッシュボード</h3>
+                <div class="help-block">
+                    <h4>チェックの実行</h4>
+                    <p>「全てチェック」ボタンで全分院の空き状況を一括チェックします。システム別（dent-sys / Stransa / GMO）に個別チェックも可能です。</p>
+                    <p>チェック中は経過時間が表示されます。完了まで通常2〜3分かかります。</p>
+                </div>
+                <div class="help-block">
+                    <h4>フィルタ</h4>
+                    <p><strong>システムフィルタ:</strong> All / dent-sys / Stransa / GMO で表示を絞り込めます。</p>
+                    <p><strong>職種フィルタ:</strong> All / Dr（歯科医師）/ DH（歯科衛生士）で絞り込めます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>結果の見方</h4>
+                    <p><strong>OK（緑）:</strong> 空き枠が閾値以上あり、新規予約を受け入れ可能な状態です。</p>
+                    <p><strong>NG（赤）:</strong> 空き枠が閾値未満で、新規予約の受け入れが難しい状態です。</p>
+                    <p>タイムラインバーでは、色付きの部分が空き枠を示します。赤い縦線は現在時刻です。</p>
+                </div>
+                <div class="help-block">
+                    <h4>詳細表示</h4>
+                    <p>各クリニックカードの「詳細を見る」をクリックすると、スタッフごとの空き枠時間帯が確認できます。</p>
+                </div>
+            </div>
+            <div class="help-section" id="help-staff">
+                <h3>スタッフ管理</h3>
+                <div class="help-block">
+                    <h4>スタッフ同期</h4>
+                    <p>「スタッフ同期」ボタンで、各予約システムから最新のスタッフ一覧を取得します。新しいスタッフが追加された場合はここで同期してください。</p>
+                </div>
+                <div class="help-block">
+                    <h4>有効/無効の切替</h4>
+                    <p>各スタッフ左のトグルスイッチで、チェック対象に含めるかどうかを設定します。無効にしたスタッフの空き枠はカウントされません。</p>
+                    <p>「自動除外」と表示されているスタッフは、予約システム上で見つからなかったため自動的に無効化されています。</p>
+                </div>
+                <div class="help-block">
+                    <h4>職種の設定</h4>
+                    <p>Dr（歯科医師）/ DH（歯科衛生士）/ 矯正（矯正歯科医）のボタンで職種を分類できます。職種ごとに閾値を設定したり、フィルタで絞り込んだりできます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>WEB予約受付</h4>
+                    <p>「WEB」タグをONにすると、そのスタッフがWEB予約を受け付けていることを示します。表示用のラベルです。</p>
+                </div>
+                <div class="help-block">
+                    <h4>初診枠の閾値</h4>
+                    <p>各クリニックの上部で、職種別の初診枠閾値（分）を設定できます。空き枠がこの閾値未満の場合、NGと判定されます。</p>
+                    <p>例: Dr閾値=30分 → 30分以上の空きがあればOK、なければNG</p>
+                </div>
+                <div class="help-block">
+                    <h4>メモ・タグ</h4>
+                    <p><strong>メモ:</strong> スタッフごとに自由にメモを残せます（例: 「午前のみ」「産休中」）。</p>
+                    <p><strong>タグ:</strong> 「+ タグ」ボタンで任意のタグを追加できます。分類や目印として活用してください。</p>
+                </div>
+            </div>
+            <div class="help-section" id="help-clinics">
+                <h3>分院管理</h3>
+                <div class="help-block">
+                    <h4>分院の有効/無効</h4>
+                    <p>トグルスイッチで各分院のチェック対象を切り替えます。</p>
+                    <p>無効にした分院は、チェック実行時にスキップされます。一時的にチェック不要な分院がある場合に使用してください。</p>
+                </div>
+                <div class="help-block">
+                    <h4>表示情報</h4>
+                    <p><strong>システム:</strong> dent-sys または Stransa の予約システム種別を表示しています。</p>
+                    <p><strong>ID:</strong> 予約システム上の分院識別子です。</p>
+                </div>
+            </div>
+            <div class="help-section" id="help-rules">
+                <h3>ルール設定</h3>
+                <div class="help-block">
+                    <h4>連続スロット数</h4>
+                    <p>空き枠1ブロックとしてカウントする連続スロット数です。デフォルトは6（= 5分 x 6 = 30分）。30分以上の連続した空きを1ブロックとして数えます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>必要空き枠数</h4>
+                    <p>OKと判定するために必要な最低ブロック数です。この値以上の空きブロックがあればOK、未満ならNGとなります。</p>
+                </div>
+                <div class="help-block">
+                    <h4>除外パターン</h4>
+                    <p>チェック対象から除外するキーワードをカンマ区切りで入力します。スタッフ名にこのキーワードが含まれる場合、チェック対象外になります。</p>
+                </div>
+                <div class="help-block">
+                    <h4>チェック時間帯</h4>
+                    <p>空き枠を確認する時間帯を設定します（例: 9時〜19時）。この範囲外の時間帯は無視されます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>スロット間隔</h4>
+                    <p>予約システムの最小時間単位（分）です。通常は5分です。</p>
+                </div>
+            </div>
+            <div class="help-section" id="help-results">
+                <h3>結果一覧</h3>
+                <div class="help-block">
+                    <h4>過去の結果を閲覧</h4>
+                    <p>日付セレクトボックスから過去のチェック結果を選択して閲覧できます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>フィルタ</h4>
+                    <p>ダッシュボードと同様に、システム別・職種別のフィルタが使えます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>充足/不足の表示</h4>
+                    <p><strong>充足（緑）:</strong> 空き枠が閾値以上あり問題なしの状態です。</p>
+                    <p><strong>不足（赤）:</strong> 空き枠が閾値未満で対応が必要な状態です。</p>
+                    <p>各カードを展開すると、スタッフ別の空き枠詳細とタイムラインが確認できます。</p>
+                </div>
+            </div>
+        </div>
+    </aside>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     {% block scripts %}{% endblock %}

@@ -1,3 +1,48 @@
+// === ヘルプパネル ===
+
+function toggleHelpPanel() {
+    const panel = document.getElementById('helpPanel');
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+        panel.classList.remove('open');
+    } else {
+        panel.classList.add('open');
+        autoSelectHelpSection();
+    }
+}
+
+function showHelpSection(sectionId) {
+    document.querySelectorAll('.help-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.help-nav-btn').forEach(b => b.classList.remove('active'));
+    const section = document.getElementById('help-' + sectionId);
+    const btn = document.querySelector(`.help-nav-btn[data-section="${sectionId}"]`);
+    if (section) section.classList.add('active');
+    if (btn) btn.classList.add('active');
+}
+
+function autoSelectHelpSection() {
+    const path = window.location.pathname;
+    const map = {
+        '/': 'dashboard',
+        '/staff': 'staff',
+        '/clinics': 'clinics',
+        '/rules': 'rules',
+        '/results': 'results'
+    };
+    const section = map[path] || 'dashboard';
+    showHelpSection(section);
+}
+
+// Escキーでヘルプパネルを閉じる
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const panel = document.getElementById('helpPanel');
+        if (panel && panel.classList.contains('open')) {
+            toggleHelpPanel();
+        }
+    }
+});
+
 // 共通JavaScript関数
 
 // APIエラーハンドリング
