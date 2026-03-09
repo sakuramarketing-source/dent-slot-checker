@@ -65,7 +65,7 @@ def _sync_gcs_on_startup(config_path: str):
         merged = _merge_staff_rules(local_data, gcs_data)
 
         with open(staff_rules_path, 'w', encoding='utf-8') as f:
-            yaml.dump(merged, f, allow_unicode=True, default_flow_style=False)
+            yaml.dump(merged, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
         # マージ結果をGCSにもアップロード
         upload_to_gcs(staff_rules_path, 'config/staff_rules.yaml')

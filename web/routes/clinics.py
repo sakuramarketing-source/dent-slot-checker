@@ -23,7 +23,7 @@ def save_clinics_config(data):
     clinics_path = os.path.join(config_path, 'clinics.yaml')
 
     with open(clinics_path, 'w', encoding='utf-8') as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
 @bp.route('/', methods=['GET'])
