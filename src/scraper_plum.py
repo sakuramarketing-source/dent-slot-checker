@@ -385,10 +385,35 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
     # Cloud Run診断: コンソールエラーとネットワーク失敗を収集
     console_errors = []
     failed_requests = []
+    api_responses = []
     page.on('console', lambda msg: console_errors.append(
         f"{msg.type}: {msg.text}") if msg.type in ('error', 'warning') else None)
     page.on('requestfailed', lambda req: failed_requests.append(
         f"{req.method} {req.url} → {req.failure}"))
+
+    # APIレスポンスインターセプト（JSON応答をキャプチャ）
+    async def _capture_response(response):
+        try:
+            url = response.url
+            # 静的アセットをスキップ
+            if any(url.endswith(ext) for ext in (
+                '.js', '.css', '.png', '.jpg', '.svg', '.woff', '.woff2',
+                '.ico', '.map', '.gif', '.webp')):
+                return
+            content_type = response.headers.get('content-type', '')
+            if 'json' not in content_type:
+                return
+            body = await response.body()
+            api_responses.append({
+                'url': url,
+                'status': response.status,
+                'size': len(body),
+                'body': body.decode('utf-8', errors='replace')[:100000]
+            })
+        except Exception:
+            pass
+
+    page.on('response', _capture_response)
 
     try:
         if not await login_plum(
@@ -402,22 +427,34 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
 
         slots = await get_plum_empty_slots(page, clinic_name, clinic=clinic)
 
-        # Cloud Run診断: スクリーンショットとログをGCSに保存
+        # Cloud Run診断: スクリーンショット、APIレスポンス、ログをGCSに保存
         if os.environ.get('K_SERVICE'):
             try:
+                import json as _json
                 screenshot_path = '/tmp/plum_cloudrun_debug.png'
                 await page.screenshot(path=screenshot_path, full_page=False)
                 html_size = await page.evaluate(
                     '() => document.documentElement.outerHTML.length')
                 logger.info(f"[{clinic_name}] Cloud Run診断: HTML={html_size}bytes, "
                             f"コンソールエラー={len(console_errors)}, "
-                            f"ネットワーク失敗={len(failed_requests)}")
+                            f"ネットワーク失敗={len(failed_requests)}, "
+                            f"APIレスポンス={len(api_responses)}件")
                 for err in console_errors[:10]:
                     logger.info(f"  コンソール: {err[:200]}")
                 for req in failed_requests[:10]:
                     logger.info(f"  リクエスト失敗: {req[:200]}")
+                # APIレスポンス一覧をログ出力
+                for resp in api_responses:
+                    body_preview = (resp.get('body') or '')[:300]
+                    logger.info(f"  API: {resp['status']} {resp['url'][:120]} "
+                                f"size={resp['size']} body={body_preview}")
+                # APIレスポンスをGCSにアップロード
+                api_dump_path = '/tmp/plum_api_responses.json'
+                with open(api_dump_path, 'w') as f:
+                    _json.dump(api_responses, f, ensure_ascii=False, indent=2)
                 from src.gcs_helper import upload_to_gcs
                 upload_to_gcs(screenshot_path, 'debug/plum_cloudrun_debug.png')
+                upload_to_gcs(api_dump_path, 'debug/plum_api_responses.json')
             except Exception as diag_err:
                 logger.warning(f"[{clinic_name}] 診断情報保存失敗: {diag_err}")
 
