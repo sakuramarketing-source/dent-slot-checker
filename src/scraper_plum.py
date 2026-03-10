@@ -376,6 +376,132 @@ async def get_plum_empty_slots(page, clinic_name: str,
         return {}
 
 
+async def get_plum_empty_slots_from_api(page, target_date: str,
+                                        clinic_name: str,
+                                        clinic: dict = None) -> Dict[str, List[int]]:
+    """
+    Plum APIから直接予約データを取得して空きスロットを計算（DOMフォールバック）
+
+    Cloud RunではReact SPAの予約ブロックがDOMに描画されないため、
+    SPAが使用するREST APIを直接呼び出して予約データを取得する。
+    """
+    try:
+        # ブラウザコンテキスト内でfetchを実行（認証Cookie/セッション付き）
+        api_data = await page.evaluate('''async (targetDate) => {
+            try {
+                const [booksResp, shiftsResp, linesResp] = await Promise.all([
+                    fetch(`/api/books?date=${targetDate}`),
+                    fetch(`/api/shifts?date=${targetDate}`),
+                    fetch('/api/lines')
+                ]);
+                if (!booksResp.ok || !shiftsResp.ok || !linesResp.ok) {
+                    return {error: `API error: books=${booksResp.status} shifts=${shiftsResp.status} lines=${linesResp.status}`};
+                }
+                const [books, shifts, lines] = await Promise.all([
+                    booksResp.json(), shiftsResp.json(), linesResp.json()
+                ]);
+
+                // shifts: line ID → user name
+                const lineToUser = {};
+                for (const s of shifts) {
+                    if (s.user && s.user.name) {
+                        lineToUser[s.line] = s.user.name;
+                    }
+                }
+
+                // lines: line ID → line name (fallback)
+                const lineToName = {};
+                for (const l of lines) {
+                    lineToName[l._id] = l.name;
+                }
+
+                // Group bookings by staff, convert to JST minute intervals
+                const staffBookings = {};
+                for (const book of books) {
+                    const userName = lineToUser[book.line];
+                    if (!userName) continue;
+                    // Parse UTC ISO time → JST minutes from midnight
+                    const startDate = new Date(book.start);
+                    const endDate = new Date(book.end);
+                    const startMin = (startDate.getUTCHours() + 9) % 24 * 60 + startDate.getUTCMinutes();
+                    const endMin = (endDate.getUTCHours() + 9) % 24 * 60 + endDate.getUTCMinutes();
+                    if (!staffBookings[userName]) staffBookings[userName] = [];
+                    staffBookings[userName].push({start: startMin, end: endMin});
+                }
+
+                return {
+                    staffBookings,
+                    totalBooks: books.length,
+                    staffCount: Object.keys(staffBookings).length
+                };
+            } catch (e) {
+                return {error: e.message};
+            }
+        }''', target_date)
+
+        if not api_data or 'error' in api_data:
+            logger.warning(f"[{clinic_name}] APIフォールバック失敗: {api_data}")
+            return {}
+
+        staff_bookings = api_data['staffBookings']
+        logger.info(f"[{clinic_name}] APIフォールバック: {api_data['totalBooks']}件の予約, "
+                    f"{api_data['staffCount']}スタッフ")
+
+        # 営業時間・昼休み設定
+        start_minutes = 10 * 60   # 10:00
+        end_minutes = 19 * 60     # 19:00
+        check_interval = 15
+
+        clinic = clinic or {}
+        lunch = clinic.get('lunch_break', {})
+        lunch_start = lunch_end = 0
+        if lunch:
+            def _parse_hm(s):
+                h, m = s.split(':')
+                return int(h) * 60 + int(m)
+            lunch_start = _parse_hm(lunch['start'])
+            lunch_end = _parse_hm(lunch['end'])
+
+        # 全チェックポイント生成
+        all_check_points = []
+        t = start_minutes
+        while t < end_minutes:
+            if not (lunch_start and lunch_start <= t < lunch_end):
+                all_check_points.append(t)
+            t += check_interval
+
+        staff_slots = {}
+        for staff_name, bookings in staff_bookings.items():
+            empty_slots = []
+            for check_min in all_check_points:
+                is_booked = False
+                for bk in bookings:
+                    if bk['start'] <= check_min < bk['end']:
+                        is_booked = True
+                        break
+                if not is_booked:
+                    empty_slots.append(check_min)
+            staff_slots[staff_name] = empty_slots
+
+            total = len(all_check_points)
+            booked = total - len(empty_slots)
+            if empty_slots:
+                times_str = [f"{m//60}:{m%60:02d}" for m in empty_slots[:5]]
+                logger.info(f"  {staff_name}: 予約済={booked}/{total}, "
+                           f"空き={len(empty_slots)} "
+                           f"(例: {', '.join(times_str)}...)")
+            else:
+                logger.info(f"  {staff_name}: 予約済={booked}/{total}, 空きなし")
+
+        return staff_slots
+
+    except Exception as e:
+        logger.error(f"[{clinic_name}] APIフォールバックエラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
+
+
 async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[int]]]:
     """Plum分院1つをスクレイピング"""
     import os
@@ -426,6 +552,24 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
             logger.warning(f"[{clinic_name}] 翌日移動失敗、当日のデータで続行")
 
         slots = await get_plum_empty_slots(page, clinic_name, clinic=clinic)
+
+        # DOM検出が疑わしい場合（全スタッフがほぼ全空き）、APIフォールバック
+        if slots:
+            total_check = sum(len(v) for v in slots.values())
+            # 全スタッフの空き枠数の合計がチェックポイント×スタッフ数の80%超 = 疑わしい
+            # （ほぼ全スロットが空き = 予約ブロック未描画の可能性大）
+            num_staff = len(slots)
+            # 営業時間10:00-19:00 = 36スロット、昼休み除外で32程度
+            expected_per_staff = 32
+            if num_staff > 0 and total_check > expected_per_staff * num_staff * 0.8:
+                tomorrow = datetime.now(JST) + timedelta(days=1)
+                target_date = tomorrow.strftime('%Y-%m-%d')
+                logger.info(f"[{clinic_name}] DOM検出が疑わしい（空き{total_check}/"
+                           f"{expected_per_staff * num_staff}）、APIフォールバック実行")
+                api_slots = await get_plum_empty_slots_from_api(
+                    page, target_date, clinic_name, clinic=clinic)
+                if api_slots:
+                    slots = api_slots
 
         # Cloud Run診断: スクリーンショット、APIレスポンス、ログをGCSに保存
         if os.environ.get('K_SERVICE'):
