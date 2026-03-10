@@ -402,9 +402,6 @@ async def get_plum_empty_slots_from_api(page, target_date: str,
                 if (!booksResp.ok || !shiftsResp.ok || !linesResp.ok) {
                     return {error: `API error: books=${booksResp.status} shifts=${shiftsResp.status} lines=${linesResp.status}`};
                 }
-                const books = await booksResp.json();
-                const shifts = await shiftsResp.json();
-                const lines = await linesResp.json();
                 const [books, shifts, lines] = await Promise.all([
                     booksResp.json(), shiftsResp.json(), linesResp.json()
                 ]);
