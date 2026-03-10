@@ -129,10 +129,18 @@ async def get_plum_empty_slots(page, clinic_name: str,
     """
     try:
         # React SPAの非同期レンダリング完了を待機
-        # 予約ブロック数が安定するまでポーリング（最大15秒）
+        # Cloud Runでは構造要素が先にレンダリングされ、予約データのAPI応答が遅れるため
+        # 十分な要素数が安定するまでポーリングする
+
+        # まず初期待機（APIから予約データをフェッチする時間を確保）
+        await page.wait_for_timeout(5000)
+
+        # 予約ブロック数が安定するまでポーリング（最大20秒）
+        # 最小20要素（構造要素12個では不足、予約ブロック含めて20以上を要求）
+        MIN_ELEMENTS = 20
         prev_block_count = 0
         stable_count = 0
-        for _ in range(15):
+        for i in range(20):
             block_count = await page.evaluate('''() => {
                 let count = 0;
                 for (const div of document.querySelectorAll('div')) {
@@ -145,16 +153,17 @@ async def get_plum_empty_slots(page, clinic_name: str,
                 }
                 return count;
             }''')
-            if block_count > 0 and block_count == prev_block_count:
+            if block_count >= MIN_ELEMENTS and block_count == prev_block_count:
                 stable_count += 1
-                if stable_count >= 2:
+                if stable_count >= 3:
                     break
             else:
                 stable_count = 0
             prev_block_count = block_count
             await page.wait_for_timeout(1000)
 
-        logger.info(f"[{clinic_name}] 描画完了待機: {prev_block_count}要素検出")
+        logger.info(f"[{clinic_name}] 描画完了待機: {prev_block_count}要素検出 "
+                    f"(ループ{i+1}回, 閾値{MIN_ELEMENTS})")
 
         result = await page.evaluate('''() => {
             // === ステップ1: スタッフ列ヘッダーを取得 ===
