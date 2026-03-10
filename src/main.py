@@ -6,6 +6,7 @@ dent-sys.net および Stransa (Apotool & Box) に対応
 import asyncio
 import argparse
 import logging
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -107,12 +108,14 @@ def analyze_results(
         ortho_threshold = thresholds.get('orthodontist', 30)
 
         for doctor_name, slot_times in doctor_slots.items():
+            # Stransa (N)サフィックス除去してベース名でもマッチ
+            base_name = re.sub(r'\(\d+\)$', '', doctor_name).strip()
             # スタッフの職種に応じた閾値を決定（矯正が最優先）
-            if doctor_name in orthodontists_set:
+            if doctor_name in orthodontists_set or base_name in orthodontists_set:
                 threshold = ortho_threshold
-            elif doctor_name in doctors_set:
+            elif doctor_name in doctors_set or base_name in doctors_set:
                 threshold = dr_threshold
-            elif doctor_name in hygienists_set:
+            elif doctor_name in hygienists_set or base_name in hygienists_set:
                 threshold = dh_threshold
             else:
                 threshold = 30  # 未分類はデフォルト30分

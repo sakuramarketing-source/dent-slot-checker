@@ -204,6 +204,8 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-03-09** Plum Cloud Run対応: API fallback追加（DOM検出が>80%空き枠の場合、REST API直接呼び出しに切替）。SPAのauthorizationヘッダーをキャプチャしてpage.evaluate(fetch)で認証付きAPI取得
+- **2026-03-09** ヒロデンタル ユニットチェック修正: name_contains→explicitグループマッピングに変更。Dr/DHそれぞれ職種グループ単位でユニット共有（個別1:1マッチ→グループ内どれか空いていればOK）。main.py閾値判定に(N)サフィックス除去追加
 - **2026-03-09** Plumスクレイパー追加: イーアス春日井歯科（plum-link.com）対応。React/MUI SPA対応（ログイン・翌日遷移・空き枠検出）、15分刻みスロット検出、name_mappingによるカレンダー表示名→スタッフ管理名変換
 - **2026-03-09** ヘルプパネル追加: 全ページ共通のスライドアウト式マニュアルを実装（右側パネル、操作しながら閲覧可能）。アクセスアカウント追加（sakurakai.daini@gmail.com）。コスト削減のためmin-instances=0に変更
 - **2026-03-05** GCS設定マージ: デプロイ時にダッシュボードのユーザー設定（web_booking, memos等）がGit版で上書きされる問題を修正。起動時にDocker imageとGCSをマージし、ユーザー設定を保持
