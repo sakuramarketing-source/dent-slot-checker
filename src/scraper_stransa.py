@@ -940,7 +940,14 @@ async def _scrape_unit_tab(page: Page, clinic_name: str) -> Optional[Dict[str, L
         logger.warning(f"[{clinic_name}] ユニットタブ未検出")
         return None
 
-    return await get_stransa_empty_slots(page)
+    unit_slots = await get_stransa_empty_slots(page)
+    if unit_slots:
+        logger.info(f"[{clinic_name}] ユニットタブ: {len(unit_slots)}列検出")
+        for name, slots in unit_slots.items():
+            logger.info(f"  ユニット '{name}': {len(slots)}枠空き")
+    else:
+        logger.warning(f"[{clinic_name}] ユニットタブ: 空きスロット取得失敗")
+    return unit_slots
 
 
 def _filter_by_unit(
@@ -968,7 +975,8 @@ def _filter_by_unit(
         if not linked_units:
             # マッピングなし → フィルタせずそのまま保持
             filtered[staff_name] = slots
-            logger.info(f"[{clinic_name}] {staff_name}: ユニット連携なし → フィルタスキップ")
+            logger.info(f"[{clinic_name}] {staff_name}(空き{len(slots)}): "
+                        f"ユニット連携なし → フィルタスキップ")
             continue
 
         # 連携ユニットの空き時間を集約（OR: どれか1つ空いていればOK）
@@ -979,9 +987,9 @@ def _filter_by_unit(
         # AND フィルタ: スタッフ空き ∩ ユニット空き
         kept = [s for s in slots if s in unit_available]
         removed = len(slots) - len(kept)
-        if removed > 0:
-            logger.info(f"[{clinic_name}] {staff_name}: ユニットフィルタで {removed}枠除外 "
-                        f"(残{len(kept)}/{len(slots)}) 連携={linked_units}")
+        logger.info(f"[{clinic_name}] {staff_name}(空き{len(slots)}): "
+                    f"連携={linked_units} ユニット空き={len(unit_available)} "
+                    f"→ 残{len(kept)} (除外{removed})")
         filtered[staff_name] = kept
 
     return filtered
@@ -1014,6 +1022,13 @@ async def scrape_stransa_clinic(
 
         # スタッフタブの空きスロットを取得
         chair_slots = await get_stransa_empty_slots(page)
+
+        if chair_slots:
+            logger.info(f"[{clinic['name']}] スタッフタブ: {len(chair_slots)}列検出")
+            for name, slots in chair_slots.items():
+                logger.info(f"  スタッフ '{name}': {len(slots)}枠空き")
+        else:
+            logger.warning(f"[{clinic['name']}] スタッフタブ: 空きスロット取得失敗")
 
         # ユニットチェック: スタッフ空き AND ユニット空き
         unit_check = clinic.get('unit_check')
