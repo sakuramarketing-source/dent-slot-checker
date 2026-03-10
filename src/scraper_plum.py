@@ -378,8 +378,18 @@ async def get_plum_empty_slots(page, clinic_name: str,
 
 async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[int]]]:
     """Plum分院1つをスクレイピング"""
+    import os
     clinic_name = clinic['name']
     page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
+
+    # Cloud Run診断: コンソールエラーとネットワーク失敗を収集
+    console_errors = []
+    failed_requests = []
+    page.on('console', lambda msg: console_errors.append(
+        f"{msg.type}: {msg.text}") if msg.type in ('error', 'warning') else None)
+    page.on('requestfailed', lambda req: failed_requests.append(
+        f"{req.method} {req.url} → {req.failure}"))
+
     try:
         if not await login_plum(
             page, clinic['url'], clinic['id'], clinic['password'],
@@ -391,6 +401,25 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
             logger.warning(f"[{clinic_name}] 翌日移動失敗、当日のデータで続行")
 
         slots = await get_plum_empty_slots(page, clinic_name, clinic=clinic)
+
+        # Cloud Run診断: スクリーンショットとログをGCSに保存
+        if os.environ.get('K_SERVICE'):
+            try:
+                screenshot_path = '/tmp/plum_cloudrun_debug.png'
+                await page.screenshot(path=screenshot_path, full_page=False)
+                html_size = await page.evaluate(
+                    '() => document.documentElement.outerHTML.length')
+                logger.info(f"[{clinic_name}] Cloud Run診断: HTML={html_size}bytes, "
+                            f"コンソールエラー={len(console_errors)}, "
+                            f"ネットワーク失敗={len(failed_requests)}")
+                for err in console_errors[:10]:
+                    logger.info(f"  コンソール: {err[:200]}")
+                for req in failed_requests[:10]:
+                    logger.info(f"  リクエスト失敗: {req[:200]}")
+                from src.gcs_helper import upload_to_gcs
+                upload_to_gcs(screenshot_path, 'debug/plum_cloudrun_debug.png')
+            except Exception as diag_err:
+                logger.warning(f"[{clinic_name}] 診断情報保存失敗: {diag_err}")
 
         # name_mapping適用（カレンダー表示名→スタッフ管理名）
         name_mapping = clinic.get('name_mapping', {})
