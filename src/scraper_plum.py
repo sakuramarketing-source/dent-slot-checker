@@ -378,7 +378,8 @@ async def get_plum_empty_slots(page, clinic_name: str,
 
 async def get_plum_empty_slots_from_api(page, target_date: str,
                                         clinic_name: str,
-                                        clinic: dict = None) -> Dict[str, List[int]]:
+                                        clinic: dict = None,
+                                        auth_headers: dict = None) -> Dict[str, List[int]]:
     """
     Plum APIから直接予約データを取得して空きスロットを計算（DOMフォールバック）
 
@@ -386,17 +387,24 @@ async def get_plum_empty_slots_from_api(page, target_date: str,
     SPAが使用するREST APIを直接呼び出して予約データを取得する。
     """
     try:
-        # ブラウザコンテキスト内でfetchを実行（認証Cookie/セッション付き）
-        api_data = await page.evaluate('''async (targetDate) => {
+        # SPAが使用する認証ヘッダーをそのまま渡す
+        auth_headers = auth_headers or {}
+        logger.info(f"[{clinic_name}] APIフォールバック: auth_headers={list(auth_headers.keys())}")
+
+        api_data = await page.evaluate('''async ([targetDate, authHeaders]) => {
             try {
+                const opts = {headers: authHeaders};
                 const [booksResp, shiftsResp, linesResp] = await Promise.all([
-                    fetch(`/api/books?date=${targetDate}`),
-                    fetch(`/api/shifts?date=${targetDate}`),
-                    fetch('/api/lines')
+                    fetch(`/api/books?date=${targetDate}`, opts),
+                    fetch(`/api/shifts?date=${targetDate}`, opts),
+                    fetch('/api/lines', opts)
                 ]);
                 if (!booksResp.ok || !shiftsResp.ok || !linesResp.ok) {
                     return {error: `API error: books=${booksResp.status} shifts=${shiftsResp.status} lines=${linesResp.status}`};
                 }
+                const books = await booksResp.json();
+                const shifts = await shiftsResp.json();
+                const lines = await linesResp.json();
                 const [books, shifts, lines] = await Promise.all([
                     booksResp.json(), shiftsResp.json(), linesResp.json()
                 ]);
@@ -437,7 +445,7 @@ async def get_plum_empty_slots_from_api(page, target_date: str,
             } catch (e) {
                 return {error: e.message};
             }
-        }''', target_date)
+        }''', [target_date, auth_headers])
 
         if not api_data or 'error' in api_data:
             logger.warning(f"[{clinic_name}] APIフォールバック失敗: {api_data}")
@@ -512,10 +520,20 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
     console_errors = []
     failed_requests = []
     api_responses = []
+    captured_auth_headers = {}  # SPAが使用する認証ヘッダーをキャプチャ
     page.on('console', lambda msg: console_errors.append(
         f"{msg.type}: {msg.text}") if msg.type in ('error', 'warning') else None)
     page.on('requestfailed', lambda req: failed_requests.append(
         f"{req.method} {req.url} → {req.failure}"))
+
+    # SPAのAPIリクエストから認証ヘッダーをキャプチャ
+    def _capture_request(request):
+        if '/api/' in request.url and not captured_auth_headers:
+            headers = request.headers
+            for key in ('x-access-token', 'authorization', 'x-auth-token'):
+                if key in headers:
+                    captured_auth_headers[key] = headers[key]
+    page.on('request', _capture_request)
 
     # APIレスポンスインターセプト（JSON応答をキャプチャ）
     async def _capture_response(response):
@@ -567,7 +585,8 @@ async def scrape_plum_clinic(browser, clinic: dict) -> Optional[Dict[str, List[i
                 logger.info(f"[{clinic_name}] DOM検出が疑わしい（空き{total_check}/"
                            f"{expected_per_staff * num_staff}）、APIフォールバック実行")
                 api_slots = await get_plum_empty_slots_from_api(
-                    page, target_date, clinic_name, clinic=clinic)
+                    page, target_date, clinic_name, clinic=clinic,
+                    auth_headers=captured_auth_headers)
                 if api_slots:
                     slots = api_slots
 
