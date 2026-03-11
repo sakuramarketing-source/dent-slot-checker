@@ -1,0 +1,31 @@
+steps:
+  # Docker イメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/dent-slot-checker:$COMMIT_SHA', '.']
+
+  # Artifact Registry にプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/dent-slot-checker:$COMMIT_SHA']
+
+  # Cloud Run にデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'dent-slot-checker'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/dent-slot-checker:$COMMIT_SHA'
+      - '--region=asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--timeout=900'
+      - '--min-instances=0'
+      - '--no-cpu-throttling'
+      - '--set-env-vars=PYTHONUNBUFFERED=1'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/dent-slot-checker:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
