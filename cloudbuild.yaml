@@ -21,7 +21,8 @@ steps:
       - '--cpu=2'
       - '--timeout=900'
       - '--min-instances=0'
-      - '--no-cpu-throttling'
+      - '--cpu-throttling'
+      - '--max-instances=5'
       - '--set-env-vars=PYTHONUNBUFFERED=1'
 
 images:
