@@ -204,6 +204,18 @@ dent-slot-checker/
 ### コスト削減オプション
 - `min-instances=0` + `--cpu-throttling` に変更 → 月額数百円まで削減可能（ただしスクレイピング速度が低下）
 
+### コスト注意事項（2026-03-13 インシデント記録）
+
+**発生した問題**: `--no-cpu-throttling`（インスタンスベース課金）+ `max-instances=20` の設定で日額約¥7,000〜¥9,000が発生。
+
+**原因**: `--no-cpu-throttling` はリクエストがなくてもインスタンス稼働中はCPU・メモリが課金される。max-instances=20だと最悪20台分が課金対象。
+
+**対策**:
+- `max-instances=5` に制限し、最悪ケースでも¥3,885/日に抑制
+- `--cpu-throttling` に変更すると月額数百円まで削減可能だが、Chromiumのスクレイピング速度が大幅に低下するため不採用
+
+**設定変更時の注意**: `--no-cpu-throttling` / `--cpu-throttling` / `min-instances` / `max-instances` はCloud Runの課金モデルに直結するため、変更時は必ずコスト影響を確認すること
+
 ## 更新履歴
 
 - **2026-03-13** Cloud Run設定変更: no-cpu-throttling + min-instances=1 + メモリ4GiB + max-instances=5。インスタンスベース課金（月額約¥23,000）、コールドスタートなし
