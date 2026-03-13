@@ -17,7 +17,7 @@ steps:
       - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/dent-slot-checker:$COMMIT_SHA'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
-      - '--memory=2Gi'
+      - '--memory=4Gi'
       - '--cpu=2'
       - '--timeout=900'
       - '--min-instances=0'

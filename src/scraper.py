@@ -633,7 +633,7 @@ async def scrape_all_clinics(
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
 
-    sem = asyncio.Semaphore(1)  # 1（逐次）: Cloud Runでのタイムアウト対策
+    sem = asyncio.Semaphore(3)  # 3並列: 2vCPU+4GiBメモリで安定動作
 
     async def _scrape_one(clinic, disabled_staff):
         async with sem:
