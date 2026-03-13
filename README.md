@@ -186,24 +186,27 @@ dent-slot-checker/
 
 ## 運用コスト（GCP）
 
-### チェック1回あたり
-- Cloud Run従量課金（2GB RAM / 2 CPU, 約4分/回）: **約$0.02〜0.03**（約3〜4円）
+### Cloud Run設定
+- **CPU**: 2 vCPU / **メモリ**: 4 GiB
+- **課金モデル**: インスタンスベース（no-cpu-throttling）
+- **min-instances**: 1（常時待機、コールドスタートなし）
+- **max-instances**: 5
 
-### 月額固定費
+### 月額費用
 | 項目 | 月額 | 備考 |
 |------|------|------|
-| Cloud Run (min-instances=0) | ~$0-5 | 従量課金のみ（コールドスタート5-10秒） |
+| Cloud Run (1インスタンス常時稼働) | ~$155 (約¥23,000) | 2vCPU + 4GiB × 24h × 30日 |
 | 静的IP・ロードバランサ | ~$3-5 | analytics.sakurashika-g.jp と共用 |
 | Secret Manager | ~$0.10 | clinic-credentials（11分院の認証情報） |
 | GCS | ~$0.50 | staff_rules.yaml + 結果ファイル |
-| 外部API | $0 | DataForSEO/Claude API は未実装 |
-| **合計** | **~$4-11** | |
+| **合計** | **~$160 (約¥24,000)** | |
 
 ### コスト削減オプション
-- `min-instances=0` に変更 → 月$80削減（ただしコールドスタート5-10秒発生）
+- `min-instances=0` + `--cpu-throttling` に変更 → 月額数百円まで削減可能（ただしスクレイピング速度が低下）
 
 ## 更新履歴
 
+- **2026-03-13** Cloud Run設定変更: no-cpu-throttling + min-instances=1 + メモリ4GiB + max-instances=5。インスタンスベース課金（月額約¥23,000）、コールドスタートなし
 - **2026-03-11** 継続的デプロイ設定: Cloud Build + GitHubトリガーを追加。masterブランチへのpush時に自動でCloud Runにデプロイ（cloudbuild.yaml追加）
 - **2026-03-09** Plum Cloud Run対応: API fallback追加（DOM検出が>80%空き枠の場合、REST API直接呼び出しに切替）。SPAのauthorizationヘッダーをキャプチャしてpage.evaluate(fetch)で認証付きAPI取得
 - **2026-03-09** ヒロデンタル ユニットチェック修正: name_contains→explicitグループマッピングに変更。Dr/DHそれぞれ職種グループ単位でユニット共有（個別1:1マッチ→グループ内どれか空いていればOK）。main.py閾値判定に(N)サフィックス除去追加
