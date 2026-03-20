@@ -188,36 +188,38 @@ dent-slot-checker/
 
 ### Cloud Run設定
 - **CPU**: 2 vCPU / **メモリ**: 4 GiB
-- **課金モデル**: インスタンスベース（no-cpu-throttling）
-- **min-instances**: 1（常時待機、コールドスタートなし）
+- **課金モデル**: リクエストベース（cpu-throttling）
+- **min-instances**: 0（アイドル時インスタンスなし）
 - **max-instances**: 5
 
 ### 月額費用
 | 項目 | 月額 | 備考 |
 |------|------|------|
-| Cloud Run (1インスタンス常時稼働) | ~$155 (約¥23,000) | 2vCPU + 4GiB × 24h × 30日 |
+| Cloud Run (リクエストベース) | ~数百円 | 1日1回チェック程度の場合 |
 | 静的IP・ロードバランサ | ~$3-5 | analytics.sakurashika-g.jp と共用 |
 | Secret Manager | ~$0.10 | clinic-credentials（11分院の認証情報） |
 | GCS | ~$0.50 | staff_rules.yaml + 結果ファイル |
-| **合計** | **~$160 (約¥24,000)** | |
+| **合計** | **~¥1,000〜2,000** | リクエスト頻度による |
 
-### コスト削減オプション
-- `min-instances=0` + `--cpu-throttling` に変更 → 月額数百円まで削減可能（ただしスクレイピング速度が低下）
+### コスト注意事項
 
-### コスト注意事項（2026-03-13 インシデント記録）
+#### インシデント1（2026-03-02〜03-13）: max-instances=20 + no-cpu-throttling
+- **問題**: 日額約¥7,000〜¥9,000が発生（約11日間、推定被害¥77,000〜¥99,000）
+- **原因**: `--no-cpu-throttling`（インスタンスベース課金）でmax-instances=20のまま運用。リクエストがなくてもインスタンス稼働中は課金され、最大20台分が課金対象に
+- **対策**: max-instances=5に制限
 
-**発生した問題**: `--no-cpu-throttling`（インスタンスベース課金）+ `max-instances=20` の設定で日額約¥7,000〜¥9,000が発生。
+#### インシデント2（2026-03-13〜03-20）: 古いリビジョン残存
+- **問題**: max-instances=5に修正後も日額約¥10,000が継続
+- **原因**: 古いリビジョン154個が残存。特にmin-instances=1 + no-cpu-throttling設定の古いリビジョンがインスタンスを維持し続け課金が発生
+- **対策**: 古いリビジョンを全削除、課金モデルをcpu-throttling（リクエストベース）+ min-instances=0に変更、cloudbuild.yamlも同様に修正
 
-**原因**: `--no-cpu-throttling` はリクエストがなくてもインスタンス稼働中はCPU・メモリが課金される。max-instances=20だと最悪20台分が課金対象。
-
-**対策**:
-- `max-instances=5` に制限し、最悪ケースでも¥3,885/日に抑制
-- `--cpu-throttling` に変更すると月額数百円まで削減可能だが、Chromiumのスクレイピング速度が大幅に低下するため不採用
-
-**設定変更時の注意**: `--no-cpu-throttling` / `--cpu-throttling` / `min-instances` / `max-instances` はCloud Runの課金モデルに直結するため、変更時は必ずコスト影響を確認すること
+#### 設定変更時の注意
+- `--no-cpu-throttling` / `--cpu-throttling` / `min-instances` / `max-instances` はCloud Runの課金モデルに直結するため、変更時は必ずコスト影響を確認すること
+- **リビジョン管理**: 設定変更後は古いリビジョンを削除すること。古いリビジョンにmin-instances設定が残っていると課金が継続する
 
 ## 更新履歴
 
+- **2026-03-20** コスト修正: cpu-throttling（リクエストベース課金）+ min-instances=0に変更。古いリビジョン154個を削除（min-instances=1+no-cpu-throttlingの旧リビジョンが課金を継続していた）。cloudbuild.yamlも同様に修正
 - **2026-03-13** Cloud Run設定変更: no-cpu-throttling + min-instances=1 + メモリ4GiB + max-instances=5。インスタンスベース課金（月額約¥23,000）、コールドスタートなし
 - **2026-03-11** 継続的デプロイ設定: Cloud Build + GitHubトリガーを追加。masterブランチへのpush時に自動でCloud Runにデプロイ（cloudbuild.yaml追加）
 - **2026-03-09** Plum Cloud Run対応: API fallback追加（DOM検出が>80%空き枠の場合、REST API直接呼び出しに切替）。SPAのauthorizationヘッダーをキャプチャしてpage.evaluate(fetch)で認証付きAPI取得

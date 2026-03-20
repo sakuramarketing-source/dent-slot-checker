@@ -20,8 +20,8 @@ steps:
       - '--memory=4Gi'
       - '--cpu=2'
       - '--timeout=900'
-      - '--min-instances=1'
-      - '--no-cpu-throttling'
+      - '--min-instances=0'
+      - '--cpu-throttling'
       - '--max-instances=5'
       - '--set-env-vars=PYTHONUNBUFFERED=1'
 
