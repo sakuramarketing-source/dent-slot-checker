@@ -32,12 +32,13 @@ def send_slot_results(combined: dict, config_path: str) -> bool:
         logger.warning("CHATWORK_API_TOKEN or CHATWORK_ROOM_ID_SLOT not set, skipping notification")
         return False
 
-    # ダッシュボードと同じフィルタを適用
+    # ダッシュボードと同じフィルタ+ソートを適用
     filtered = copy.deepcopy(combined)
     staff_rules = _load_staff_rules(config_path)
     settings = _load_clinics_settings(config_path)
     _apply_category_classification(filtered, staff_rules)
     _apply_web_booking_filter(filtered, staff_rules, settings)
+    _sort_by_clinic_order(filtered)
 
     message = _format_message(filtered)
 
@@ -152,6 +153,15 @@ def _apply_web_booking_filter(data: dict, staff_rules: dict, settings: dict):
 
     if 'summary' in data:
         data['summary']['clinics_with_availability'] = clinics_with_availability
+
+
+def _sort_by_clinic_order(data: dict):
+    """CLINIC_ORDER順にソート（main.pyと同等）"""
+    from web.routes.staff import CLINIC_ORDER
+    order_map = {name: i for i, name in enumerate(CLINIC_ORDER)}
+    data['results'].sort(
+        key=lambda r: order_map.get(r.get('clinic', ''), 999)
+    )
 
 
 def _format_message(combined: dict) -> str:
