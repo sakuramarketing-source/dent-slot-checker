@@ -633,7 +633,7 @@ async def scrape_all_clinics(
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
 
-    sem = asyncio.Semaphore(1)  # 逐次: 並列はリソース競合で逆に遅くなる
+    sem = asyncio.Semaphore(3)  # 3並列: no-cpu-throttling + max-instances=1 で安全
 
     async def _scrape_one(clinic, disabled_staff):
         async with sem:

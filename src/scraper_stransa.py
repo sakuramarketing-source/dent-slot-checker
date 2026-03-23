@@ -1068,7 +1068,7 @@ async def scrape_all_stransa_clinics(
         {分院名: {チェア名: [スロット時間のリスト]}} の辞書
     """
     results = {}
-    sem = asyncio.Semaphore(1)  # 逐次: 並列はリソース競合で逆に遅くなる
+    sem = asyncio.Semaphore(3)  # 3並列: no-cpu-throttling + max-instances=1 で安全
 
     stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
     logger.info(f"Stransa対象分院数: {len(stransa_clinics)}")

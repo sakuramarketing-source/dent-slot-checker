@@ -188,18 +188,20 @@ dent-slot-checker/
 
 ### Cloud Run設定
 - **CPU**: 2 vCPU / **メモリ**: 4 GiB
-- **課金モデル**: リクエストベース（cpu-throttling）
-- **min-instances**: 0（アイドル時インスタンスなし）
-- **max-instances**: 5
+- **課金モデル**: インスタンスベース（no-cpu-throttling）※CPU常に全力
+- **min-instances**: 0（アイドル時インスタンス停止 → 課金ゼロ）
+- **max-instances**: 1（スケールアウト防止）
+- **並列数**: Semaphore(3)（dent-sys/Stransa各3並列）
 
 ### 月額費用
 | 項目 | 月額 | 備考 |
 |------|------|------|
-| Cloud Run (リクエストベース) | ~数百円 | 1日1回チェック程度の場合 |
-| 静的IP・ロードバランサ | ~$3-5 | analytics.sakurashika-g.jp と共用 |
-| Secret Manager | ~$0.10 | clinic-credentials（11分院の認証情報） |
-| GCS | ~$0.50 | staff_rules.yaml + 結果ファイル |
-| **合計** | **~¥1,000〜2,000** | リクエスト頻度による |
+| Cloud Run | ~¥300 | 1日1回チェック(5分) + アイドル15分 ≈ 20分/日 |
+| ロードバランサ | ~¥8,100 | 転送ルール3つ（dent-checker HTTP/HTTPS + seo-analytics HTTPS） |
+| Artifact Registry | ~¥700 | Dockerイメージ保存（古いイメージ定期削除推奨） |
+| Secret Manager | ~¥100 | 9シークレット11バージョン |
+| GCS | ~¥0 | 約50MB（無料枠内） |
+| **合計** | **~¥9,200** | ロードバランサが88%を占める |
 
 ### コスト注意事項
 
@@ -219,6 +221,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-03-23** コスト最適化: no-cpu-throttling + min-instances=0 + max-instances=1に変更。Semaphore(3)で3並列化。チェック5分以内・コスト約¥10/日を実現。古いリビジョンは都度削除
 - **2026-03-20** コスト修正: cpu-throttling（リクエストベース課金）+ min-instances=0に変更。古いリビジョン154個を削除（min-instances=1+no-cpu-throttlingの旧リビジョンが課金を継続していた）。cloudbuild.yamlも同様に修正
 - **2026-03-13** Cloud Run設定変更: no-cpu-throttling + min-instances=1 + メモリ4GiB + max-instances=5。インスタンスベース課金（月額約¥23,000）、コールドスタートなし
 - **2026-03-11** 継続的デプロイ設定: Cloud Build + GitHubトリガーを追加。masterブランチへのpush時に自動でCloud Runにデプロイ（cloudbuild.yaml追加）
