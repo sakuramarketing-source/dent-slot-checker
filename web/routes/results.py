@@ -371,9 +371,10 @@ def run_check():
             'message': f'既にチェック実行中です（{elapsed}秒経過）'
         }), 409
 
-    # システムフィルタ取得
+    # リクエストパラメータ取得
     data = request.get_json(silent=True) or {}
     system_filter = data.get('system')  # 'dent-sys', 'stransa', 'gmo', or None
+    notify_chatwork = data.get('notify_chatwork', False)
 
     # ログセットアップ
     log_dir = os.path.join(project_root, 'logs')
@@ -583,6 +584,14 @@ def run_check():
             saved = save_results(combined, output_dir, ['json', 'csv'])
             for f in saved:
                 logger_t.info(f"結果保存: {f}")
+
+            # Chatwork通知（notify_chatwork=trueの場合のみ）
+            if notify_chatwork:
+                try:
+                    from src.chatwork_notifier import send_slot_results
+                    send_slot_results(combined)
+                except Exception as e:
+                    logger_t.error(f"Chatwork通知エラー: {e}")
 
             _check_result = True
             _output_synced = False

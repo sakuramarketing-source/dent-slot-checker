@@ -24,6 +24,7 @@ steps:
       - '--no-cpu-throttling'
       - '--max-instances=1'
       - '--set-env-vars=PYTHONUNBUFFERED=1'
+      - '--set-secrets=CHATWORK_API_TOKEN=CHATWORK_API_TOKEN:latest,CHATWORK_ROOM_ID_SLOT=CHATWORK_ROOM_ID_SLOT:latest'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/dent-slot-checker:$COMMIT_SHA'

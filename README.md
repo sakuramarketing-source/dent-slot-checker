@@ -221,6 +221,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-03-23** Chatwork自動通知: 毎日17:00に自動チェック→空きあり分院のみChatwork送信（ルーム427934070）。Cloud Scheduler + notify_chatworkパラメータで手動/自動を区別。手動チェックは通知なし
 - **2026-03-23** コスト最適化: no-cpu-throttling + min-instances=0 + max-instances=1に変更。Semaphore(3)で3並列化。チェック5分以内・コスト約¥10/日を実現。古いリビジョンは都度削除
 - **2026-03-20** コスト修正: cpu-throttling（リクエストベース課金）+ min-instances=0に変更。古いリビジョン154個を削除（min-instances=1+no-cpu-throttlingの旧リビジョンが課金を継続していた）。cloudbuild.yamlも同様に修正
 - **2026-03-13** Cloud Run設定変更: no-cpu-throttling + min-instances=1 + メモリ4GiB + max-instances=5。インスタンスベース課金（月額約¥23,000）、コールドスタートなし
