@@ -589,7 +589,7 @@ def run_check():
             if notify_chatwork:
                 try:
                     from src.chatwork_notifier import send_slot_results
-                    send_slot_results(combined)
+                    send_slot_results(combined, str(config_path))
                 except Exception as e:
                     logger_t.error(f"Chatwork通知エラー: {e}")
 
