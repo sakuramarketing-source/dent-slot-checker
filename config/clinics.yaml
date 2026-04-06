@@ -4,46 +4,59 @@ clinics:
   - name: "さくら歯科"
     url: "https://www.dent-sys.net/sakura/t/"
     enabled: true
+    closed_days: ["祝"]
 
   - name: "ありす歯科"
     url: "https://www.dent-sys.net/942alice/t/"
     enabled: true
+    closed_days: ["日"]
 
   - name: "たんぽぽ歯科"
     url: "https://www.dent-sys.net/tampopo/t/"
     enabled: true
+    closed_days: ["日"]
 
   - name: "春日井きらり歯科"
     url: "https://www.dent-sys.net/814kirari/t/"
     enabled: true
+    closed_days: []
 
   - name: "松戸ありす歯科"
     url: "https://www.dent-sys.net/813arisu/t/"
     enabled: true
+    closed_days: ["日", "祝"]
+    closed_weekday_nth:
+      水: [1, 3]
 
   - name: "池下さくら歯科"
     url: "https://www.dent-sys.net/844sakura/t/"
     enabled: true
+    closed_days: ["日"]
 
   - name: "日進赤池たんぽぽ歯科"
     url: "https://www.dent-sys.net/894akaike/t/"
     enabled: true
+    closed_days: []
 
   - name: "春日井アップル歯科"
     url: "https://www.dent-sys.net/906kasugai/t/"
     enabled: true
+    closed_days: ["日"]
 
   - name: "流山ハピネス歯科"
     url: "https://www.dent-sys.net/994sakura-nagareyama/t/"
     enabled: true
+    closed_days: ["日", "祝"]
 
   - name: "クローバー歯科"
     url: "https://www.dent-sys.net/1017clover/t/"
     enabled: true
+    closed_days: ["日", "祝"]
 
   - name: "流山ありす歯科・矯正歯科"
     url: "https://www.dent-sys.net/1018alice/t/"
     enabled: true
+    closed_days: ["水", "日", "祝"]
 
 # Stransa (Apotool & Box) 分院設定
 # 認証情報(id/password)はSecret Managerで管理
@@ -51,26 +64,32 @@ stransa_clinics:
   - name: "長久手さくら歯科・矯正歯科"
     url: "https://apo-toolboxes.stransa.co.jp/"
     enabled: true
+    closed_days: ["日"]
 
   - name: "ヒロデンタルクリニック"
     url: "https://user.stransa.co.jp/login"
     enabled: true
+    closed_days: ["日", "祝"]
 
   - name: "名駅さくら医院・歯科・皮膚科（歯科）"
     url: "https://apo-toolboxes.stransa.co.jp/"
     enabled: true
+    closed_days: ["祝"]
 
   - name: "町屋さくら歯科・矯正歯科"
     url: "https://apo-toolboxes.stransa.co.jp/"
     enabled: true
+    closed_days: ["日", "祝"]
 
   - name: "金沢さくら医院（歯科）"
     url: "https://apo-toolboxes.stransa.co.jp/"
     enabled: true
+    closed_days: ["水", "日", "祝"]
 
   - name: "きらり大森"
     url: "https://apo-toolboxes.stransa.co.jp/"
     enabled: true
+    closed_days: ["祝"]
 
   - name: "きた矯正歯科"
     url: "https://apo-toolboxes.stransa.co.jp/"
@@ -86,6 +105,7 @@ gmo_clinics:
     tab: "歯科"
     id: "kouhou"
     password: "Kouhou1qaz"
+    closed_days: ["祝"]
 
 # Plum 分院設定
 plum_clinics:
@@ -96,6 +116,7 @@ plum_clinics:
     device_name: "瀧田セカンドPC"
     id: "admin"
     password: "IiasKasugai"
+    closed_days: ["祝"]
 
 # 共通設定
 settings:

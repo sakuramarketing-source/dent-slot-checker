@@ -679,6 +679,67 @@ def check_status():
         })
 
 
+def _calc_business_days(year: int, month: int, closed_days: list, closed_weekday_nth: dict = None) -> int:
+    """指定月の診療日数を算出（休診曜日・祝日を除外）"""
+    import calendar
+    import jpholiday
+    from datetime import date
+
+    weekday_map = {"月": 0, "火": 1, "水": 2, "木": 3, "金": 4, "土": 5, "日": 6}
+    closed_weekdays = set()
+    include_holidays = False
+    for d in closed_days:
+        if d == "祝":
+            include_holidays = True
+        elif d in weekday_map:
+            closed_weekdays.add(weekday_map[d])
+
+    _, last_day = calendar.monthrange(year, month)
+    business_days = 0
+    for day in range(1, last_day + 1):
+        dt = date(year, month, day)
+        # 休診曜日チェック
+        if dt.weekday() in closed_weekdays:
+            continue
+        # 祝日チェック
+        if include_holidays and jpholiday.is_holiday(dt):
+            continue
+        # 第N曜日チェック（例: 第1,3水曜）
+        if closed_weekday_nth:
+            skip = False
+            for wd_name, nth_list in closed_weekday_nth.items():
+                if wd_name in weekday_map and dt.weekday() == weekday_map[wd_name]:
+                    week_num = (day - 1) // 7 + 1
+                    if week_num in nth_list:
+                        skip = True
+                        break
+            if skip:
+                continue
+        business_days += 1
+    return business_days
+
+
+def _load_clinic_closed_days() -> dict:
+    """clinics.yamlから全分院の休診日設定を読み込む"""
+    config_path = current_app.config['CONFIG_PATH']
+    clinics_path = os.path.join(config_path, 'clinics.yaml')
+    if not os.path.exists(clinics_path):
+        return {}
+    with open(clinics_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f) or {}
+
+    result = {}
+    for key in ['clinics', 'stransa_clinics', 'gmo_clinics', 'plum_clinics']:
+        for c in config.get(key, []):
+            name = c.get('name', '')
+            if name:
+                result[name] = {
+                    'closed_days': c.get('closed_days', []),
+                    'closed_weekday_nth': c.get('closed_weekday_nth', {}),
+                }
+    return result
+
+
 @bp.route('/monthly-report', methods=['GET'])
 def monthly_report_api():
     """月次レポートAPI: 指定月の分院別空き枠集計"""
@@ -687,10 +748,11 @@ def monthly_report_api():
 
     month = request.args.get('month')
     if not month or not _re.match(r'^\d{4}-\d{2}$', month):
-        # デフォルト: 今月
         month = datetime.now().strftime('%Y-%m')
 
     year_month = month.replace('-', '')  # YYYYMM
+    year_int = int(year_month[:4])
+    month_int = int(year_month[4:6])
 
     # GCS同期（Cloud Run用）
     output_path = current_app.config['OUTPUT_PATH']
@@ -702,6 +764,9 @@ def monthly_report_api():
 
     if not json_files:
         return jsonify({'month': month, 'clinics': [], 'total_days_checked': 0})
+
+    # 休診日設定を読み込み
+    clinic_closed = _load_clinic_closed_days()
 
     # staff_rules読み込み（Dr/DH分類用）
     staff_rules_data = load_staff_rules()
@@ -817,10 +882,18 @@ def monthly_report_api():
 
     clinics = []
     for cd in clinic_data.values():
+        clinic_name = cd['clinic']
+        cc = clinic_closed.get(clinic_name, {})
+        bdays = _calc_business_days(
+            year_int, month_int,
+            cc.get('closed_days', []),
+            cc.get('closed_weekday_nth', {})
+        )
+        cd['business_days'] = bdays
         cd['total_days_checked'] = total_days
-        cd['frequency_rate'] = round(cd['days_with_availability'] / total_days, 2) if total_days else 0
-        cd['avg_blocks_per_day'] = round(cd['total_blocks'] / total_days, 1) if total_days else 0
-        del cd['daily_detail']  # APIレスポンスから除外（重い）
+        cd['frequency_rate'] = round(cd['days_with_availability'] / bdays, 2) if bdays else 0
+        cd['avg_blocks_per_day'] = round(cd['total_blocks'] / bdays, 1) if bdays else 0
+        del cd['daily_detail']
         clinics.append(cd)
 
     clinics.sort(key=lambda c: order_map.get(c['clinic'], 999))

@@ -27,7 +27,7 @@
         <div class="stat-value" id="reportMonth">-</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">チェック日数</div>
+        <div class="stat-label">データ日数</div>
         <div class="stat-value" id="reportDays">-</div>
     </div>
     <div class="stat-card">
@@ -41,7 +41,7 @@
         <thead>
             <tr>
                 <th>分院名</th>
-                <th>空き日数</th>
+                <th>空き日数 / 診療日</th>
                 <th>頻度</th>
                 <th>合計ブロック</th>
                 <th>日平均</th>
@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             tr.innerHTML = `
                 <td><strong>${c.clinic}</strong></td>
-                <td>${c.days_with_availability} / ${c.total_days_checked}日</td>
+                <td>${c.days_with_availability} / ${c.business_days || c.total_days_checked}日</td>
                 <td>
                     <span class="freq-bar" style="width:${barWidth}px"></span>
                     <span class="freq-text">${freqPct}%</span>
@@ -260,12 +260,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!reportData || !reportData.clinics) return;
 
         const BOM = '\uFEFF';
-        const header = '分院名,空き日数,チェック日数,頻度(%),合計ブロック,日平均,Dr,DH\n';
+        const header = '分院名,空き日数,診療日数,頻度(%),合計ブロック,日平均,Dr,DH\n';
         const rows = reportData.clinics.map(c =>
             [
                 c.clinic,
                 c.days_with_availability,
-                c.total_days_checked,
+                c.business_days || c.total_days_checked,
                 Math.round(c.frequency_rate * 100),
                 c.total_blocks,
                 c.avg_blocks_per_day,
