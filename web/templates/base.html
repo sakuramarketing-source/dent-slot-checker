@@ -41,6 +41,7 @@
             <button class="help-nav-btn" data-section="clinics" onclick="showHelpSection('clinics')">分院管理</button>
             <button class="help-nav-btn" data-section="rules" onclick="showHelpSection('rules')">ルール設定</button>
             <button class="help-nav-btn" data-section="results" onclick="showHelpSection('results')">結果一覧</button>
+            <button class="help-nav-btn" data-section="monthly" onclick="showHelpSection('monthly')">月次レポート</button>
         </nav>
         <div class="help-content">
             <div class="help-section active" id="help-dashboard">
@@ -147,6 +148,35 @@
                     <p><strong>充足（緑）:</strong> 空き枠が閾値以上あり問題なしの状態です。</p>
                     <p><strong>不足（赤）:</strong> 空き枠が閾値未満で対応が必要な状態です。</p>
                     <p>各カードを展開すると、スタッフ別の空き枠詳細とタイムラインが確認できます。</p>
+                </div>
+            </div>
+            <div class="help-section" id="help-monthly">
+                <h3>月次レポート</h3>
+                <div class="help-block">
+                    <h4>概要</h4>
+                    <p>月ごとに各分院の空き枠状況を集計したレポートです。どの分院が頻繁に空いているか、空き枠の多さを一覧で把握できます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>対象月の選択</h4>
+                    <p>上部の月選択で表示したい月を選び、「表示」ボタンを押します。過去の月も選択可能です。</p>
+                </div>
+                <div class="help-block">
+                    <h4>テーブルの見方</h4>
+                    <p><strong>空き日数:</strong> その月でチェック閾値以上の空きがあった日数 / チェック実施日数。多いほど空きが出やすい分院です。</p>
+                    <p><strong>頻度:</strong> 空き日数の割合をバーとパーセントで表示。100%に近いほど毎日空きがある状態です。</p>
+                    <p><strong>合計ブロック:</strong> 月間の空き枠ブロック合計数。1ブロック = 30分の空き枠です。</p>
+                    <p><strong>日平均:</strong> 1日あたりの平均ブロック数。日常的にどのくらい空いているかの目安です。</p>
+                    <p><strong>Dr / DH:</strong> 歯科医師（Dr）と歯科衛生士（DH）それぞれの月間ブロック合計。どちらの職種に空きが偏っているか確認できます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>ソート</h4>
+                    <p><strong>開院順:</strong> デフォルトの分院並び順。</p>
+                    <p><strong>頻度順:</strong> 空き枠が出やすい分院が上に来ます。空き枠対策の優先度確認に便利です。</p>
+                    <p><strong>ブロック数順:</strong> 合計ブロック数が多い順。空き枠の総量で比較できます。</p>
+                </div>
+                <div class="help-block">
+                    <h4>CSV出力</h4>
+                    <p>「CSV出力」ボタンで、表示中のデータをCSVファイルとしてダウンロードできます。Excelで開いて分析や報告書作成に活用できます。</p>
                 </div>
             </div>
         </div>
