@@ -679,6 +679,155 @@ def check_status():
         })
 
 
+@bp.route('/monthly-report', methods=['GET'])
+def monthly_report_api():
+    """月次レポートAPI: 指定月の分院別空き枠集計"""
+    import re as _re
+    from datetime import datetime
+
+    month = request.args.get('month')
+    if not month or not _re.match(r'^\d{4}-\d{2}$', month):
+        # デフォルト: 今月
+        month = datetime.now().strftime('%Y-%m')
+
+    year_month = month.replace('-', '')  # YYYYMM
+
+    # GCS同期（Cloud Run用）
+    output_path = current_app.config['OUTPUT_PATH']
+    sync_output_from_gcs(output_path)
+
+    # 該当月のJSONファイルを取得
+    pattern = os.path.join(output_path, f'slot_check_{year_month}*.json')
+    json_files = sorted(glob.glob(pattern))
+
+    if not json_files:
+        return jsonify({'month': month, 'clinics': [], 'total_days_checked': 0})
+
+    # staff_rules読み込み（Dr/DH分類用）
+    staff_rules_data = load_staff_rules()
+    staff_by_clinic = staff_rules_data.get('staff_by_clinic', {})
+    settings = load_clinics_settings()
+    min_blocks = settings.get('minimum_blocks_required', 4)
+
+    # 分院別集計
+    clinic_data = {}  # {clinic_name: {dates, total_blocks, dr_blocks, dh_blocks}}
+    checked_dates = set()
+
+    def _strip_suffix(name):
+        return _re.sub(r'\(\d+\)$', '', name).strip()
+
+    for filepath in json_files:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            continue
+
+        check_date = data.get('check_date', '')
+        if not check_date:
+            continue
+        checked_dates.add(check_date)
+
+        for result in data.get('results', []):
+            clinic_name = result.get('clinic', '')
+            if not clinic_name:
+                continue
+
+            # web_bookingフィルタ適用
+            clinic_config = staff_by_clinic.get(clinic_name, {})
+            web_booking = clinic_config.get('web_booking', [])
+            doctors_set = set(clinic_config.get('doctors', []))
+            hygienists_set = set(clinic_config.get('hygienists', []))
+            thresholds = clinic_config.get('slot_threshold', {})
+            dr_threshold = thresholds.get('doctor', 30)
+            dh_threshold = thresholds.get('hygienist', 30)
+
+            if not web_booking:
+                continue
+            web_booking_set = set(web_booking)
+
+            # フィルタ済みスタッフの集計
+            dr_blocks_day = 0
+            dh_blocks_day = 0
+            for detail in result.get('details', []):
+                staff_name = detail.get('doctor', '')
+                base_name = _strip_suffix(staff_name)
+                if staff_name not in web_booking_set and base_name not in web_booking_set:
+                    continue
+
+                # 閾値再計算
+                raw_times = detail.get('raw_slot_times')
+                if raw_times:
+                    interval = detail.get('slot_interval', 5)
+                    if staff_name in doctors_set or base_name in doctors_set:
+                        consec = dr_threshold // interval
+                        blocks = count_30min_blocks(raw_times, interval, consec)
+                        dr_blocks_day += blocks
+                    elif staff_name in hygienists_set or base_name in hygienists_set:
+                        consec = dh_threshold // interval
+                        blocks = count_30min_blocks(raw_times, interval, consec)
+                        dh_blocks_day += blocks
+                    else:
+                        blocks = detail.get('blocks', 0)
+                        dr_blocks_day += blocks  # unknown は Dr 扱い
+                else:
+                    blocks = detail.get('blocks', 0)
+                    if staff_name in doctors_set or base_name in doctors_set:
+                        dr_blocks_day += blocks
+                    elif staff_name in hygienists_set or base_name in hygienists_set:
+                        dh_blocks_day += blocks
+                    else:
+                        dr_blocks_day += blocks
+
+            total_day = dr_blocks_day + dh_blocks_day
+            has_availability = total_day >= min_blocks
+
+            if clinic_name not in clinic_data:
+                clinic_data[clinic_name] = {
+                    'clinic': clinic_name,
+                    'days_with_availability': 0,
+                    'total_blocks': 0,
+                    'dr_blocks': 0,
+                    'dh_blocks': 0,
+                    'daily_detail': [],
+                }
+
+            cd = clinic_data[clinic_name]
+            if has_availability:
+                cd['days_with_availability'] += 1
+            cd['total_blocks'] += total_day
+            cd['dr_blocks'] += dr_blocks_day
+            cd['dh_blocks'] += dh_blocks_day
+            cd['daily_detail'].append({
+                'date': check_date,
+                'blocks': total_day,
+                'dr': dr_blocks_day,
+                'dh': dh_blocks_day,
+            })
+
+    total_days = len(checked_dates)
+
+    # CLINIC_ORDER順にソート
+    from web.routes.staff import CLINIC_ORDER
+    order_map = {name: i for i, name in enumerate(CLINIC_ORDER)}
+
+    clinics = []
+    for cd in clinic_data.values():
+        cd['total_days_checked'] = total_days
+        cd['frequency_rate'] = round(cd['days_with_availability'] / total_days, 2) if total_days else 0
+        cd['avg_blocks_per_day'] = round(cd['total_blocks'] / total_days, 1) if total_days else 0
+        del cd['daily_detail']  # APIレスポンスから除外（重い）
+        clinics.append(cd)
+
+    clinics.sort(key=lambda c: order_map.get(c['clinic'], 999))
+
+    return jsonify({
+        'month': month,
+        'total_days_checked': total_days,
+        'clinics': clinics,
+    })
+
+
 @bp.route('/check/test-connectivity', methods=['GET'])
 def test_connectivity():
     """Stransa サイトへの接続テスト（urllib + Playwright）"""

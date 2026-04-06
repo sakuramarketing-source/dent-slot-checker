@@ -212,3 +212,9 @@ def rules_page():
 def results_page():
     """結果表示画面"""
     return render_template('results.html')
+
+
+@bp.route('/monthly-report')
+def monthly_report_page():
+    """月次レポート画面"""
+    return render_template('monthly_report.html')

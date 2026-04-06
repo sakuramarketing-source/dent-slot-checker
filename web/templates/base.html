@@ -17,6 +17,7 @@
             <li><a href="/clinics" class="{% if request.endpoint == 'main.clinics_page' %}active{% endif %}">分院管理</a></li>
             <li><a href="/rules" class="{% if request.endpoint == 'main.rules_page' %}active{% endif %}">ルール設定</a></li>
             <li><a href="/results" class="{% if request.endpoint == 'main.results_page' %}active{% endif %}">結果一覧</a></li>
+            <li><a href="/monthly-report" class="{% if request.endpoint == 'main.monthly_report_page' %}active{% endif %}">月次レポート</a></li>
         </ul>
         {% if user_email %}
         <div class="nav-user">{{ user_email }}</div>

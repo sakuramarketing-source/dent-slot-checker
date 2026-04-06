@@ -183,7 +183,16 @@ def _format_message(combined: dict) -> str:
         for r in available:
             clinic = r.get('clinic', '不明')
             blocks = r.get('total_30min_blocks', 0)
-            lines.append(f"○ {clinic}: {blocks}ブロック")
+            # Dr/DH別集計
+            dr_blocks = sum(d.get('blocks', 0) for d in r.get('details', []) if d.get('category') == 'doctor')
+            dh_blocks = sum(d.get('blocks', 0) for d in r.get('details', []) if d.get('category') == 'hygienist')
+            parts = []
+            if dr_blocks:
+                parts.append(f"Dr:{dr_blocks}")
+            if dh_blocks:
+                parts.append(f"DH:{dh_blocks}")
+            cat_str = f"（{' / '.join(parts)}）" if parts else ""
+            lines.append(f"○ {clinic}: {blocks}ブロック{cat_str}")
     else:
         lines.append("空き枠のある分院はありませんでした。")
 

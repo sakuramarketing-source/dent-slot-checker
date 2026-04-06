@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}月次レポート - 予約空き状況チェッカー{% endblock %}
+
+{% block content %}
+<h1>月次レポート</h1>
+
+<div class="report-controls">
+    <label for="monthPicker">対象月:</label>
+    <input type="month" id="monthPicker" class="month-input">
+    <button class="btn btn-primary" id="loadReport">表示</button>
+    <span class="sort-controls">
+        ソート:
+        <button class="btn btn-outline sort-btn active" data-sort="order">開院順</button>
+        <button class="btn btn-outline sort-btn" data-sort="frequency">頻度順</button>
+        <button class="btn btn-outline sort-btn" data-sort="blocks">ブロック数順</button>
+    </span>
+</div>
+
+<div id="reportLoading" class="loading-message" style="display:none;">読み込み中...</div>
+<div id="reportError" class="error-message" style="display:none;"></div>
+
+<div id="reportSummary" class="report-summary" style="display:none;">
+    <div class="stat-card">
+        <div class="stat-label">対象月</div>
+        <div class="stat-value" id="reportMonth">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">チェック日数</div>
+        <div class="stat-value" id="reportDays">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">分院数</div>
+        <div class="stat-value" id="reportClinics">-</div>
+    </div>
+</div>
+
+<div id="reportTable" style="display:none;">
+    <table class="report-table">
+        <thead>
+            <tr>
+                <th>分院名</th>
+                <th>空き日数</th>
+                <th>頻度</th>
+                <th>合計ブロック</th>
+                <th>日平均</th>
+                <th>Dr</th>
+                <th>DH</th>
+            </tr>
+        </thead>
+        <tbody id="reportBody"></tbody>
+    </table>
+</div>
+
+<style>
+.report-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.month-input {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--bg-card, #fff);
+    color: var(--text-primary, #1a202c);
+}
+.sort-controls {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary, #64748b);
+}
+.sort-btn.active {
+    background: var(--accent-color, #635BFF);
+    color: #fff;
+    border-color: var(--accent-color, #635BFF);
+}
+.report-summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.stat-card {
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    padding: 16px 24px;
+    min-width: 120px;
+}
+.stat-label {
+    font-size: 12px;
+    color: var(--text-secondary, #64748b);
+    margin-bottom: 4px;
+}
+.stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-primary, #1a202c);
+}
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-card, #fff);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-color, #e2e8f0);
+}
+.report-table th {
+    background: var(--bg-secondary, #f8fafc);
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+.report-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    font-size: 14px;
+}
+.report-table tbody tr:hover {
+    background: var(--bg-hover, #f1f5f9);
+}
+.freq-bar {
+    display: inline-block;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--accent-color, #635BFF);
+    margin-right: 8px;
+    vertical-align: middle;
+}
+.freq-text {
+    font-size: 13px;
+    color: var(--text-secondary, #64748b);
+}
+.blocks-dr { color: #2563eb; font-weight: 500; }
+.blocks-dh { color: #16a34a; font-weight: 500; }
+.loading-message {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary, #64748b);
+}
+.error-message {
+    text-align: center;
+    padding: 20px;
+    color: #dc2626;
+    background: #fef2f2;
+    border-radius: 8px;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const picker = document.getElementById('monthPicker');
+    const now = new Date();
+    picker.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    let reportData = null;
+    let currentSort = 'order';
+
+    document.getElementById('loadReport').addEventListener('click', loadReport);
+    picker.addEventListener('change', loadReport);
+
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentSort = this.dataset.sort;
+            if (reportData) renderTable(reportData, currentSort);
+        });
+    });
+
+    // 初回読み込み
+    loadReport();
+
+    function loadReport() {
+        const month = picker.value;
+        if (!month) return;
+
+        document.getElementById('reportLoading').style.display = 'block';
+        document.getElementById('reportError').style.display = 'none';
+        document.getElementById('reportSummary').style.display = 'none';
+        document.getElementById('reportTable').style.display = 'none';
+
+        fetch('/api/results/monthly-report?month=' + month)
+            .then(r => r.json())
+            .then(data => {
+                reportData = data;
+                document.getElementById('reportLoading').style.display = 'none';
+
+                if (!data.clinics || data.clinics.length === 0) {
+                    document.getElementById('reportError').textContent = 'この月のデータはありません';
+                    document.getElementById('reportError').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('reportMonth').textContent = data.month;
+                document.getElementById('reportDays').textContent = data.total_days_checked + '日';
+                document.getElementById('reportClinics').textContent = data.clinics.length + '分院';
+                document.getElementById('reportSummary').style.display = 'flex';
+                document.getElementById('reportTable').style.display = 'block';
+
+                renderTable(data, currentSort);
+            })
+            .catch(err => {
+                document.getElementById('reportLoading').style.display = 'none';
+                document.getElementById('reportError').textContent = 'データ取得エラー: ' + err.message;
+                document.getElementById('reportError').style.display = 'block';
+            });
+    }
+
+    function renderTable(data, sort) {
+        const clinics = [...data.clinics];
+
+        if (sort === 'frequency') {
+            clinics.sort((a, b) => b.frequency_rate - a.frequency_rate || b.total_blocks - a.total_blocks);
+        } else if (sort === 'blocks') {
+            clinics.sort((a, b) => b.total_blocks - a.total_blocks);
+        }
+        // 'order' はAPIのデフォルト順（CLINIC_ORDER）
+
+        const tbody = document.getElementById('reportBody');
+        tbody.innerHTML = '';
+
+        clinics.forEach(c => {
+            const tr = document.createElement('tr');
+            const freqPct = Math.round(c.frequency_rate * 100);
+            const barWidth = Math.max(freqPct * 0.8, 2);
+
+            tr.innerHTML = `
+                <td><strong>${c.clinic}</strong></td>
+                <td>${c.days_with_availability} / ${c.total_days_checked}日</td>
+                <td>
+                    <span class="freq-bar" style="width:${barWidth}px"></span>
+                    <span class="freq-text">${freqPct}%</span>
+                </td>
+                <td><strong>${c.total_blocks}</strong></td>
+                <td>${c.avg_blocks_per_day}</td>
+                <td><span class="blocks-dr">${c.dr_blocks}</span></td>
+                <td><span class="blocks-dh">${c.dh_blocks}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+});
+</script>
+{% endblock %}
