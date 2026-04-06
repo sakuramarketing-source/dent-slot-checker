@@ -709,23 +709,27 @@ def monthly_report_api():
     settings = load_clinics_settings()
     min_blocks = settings.get('minimum_blocks_required', 4)
 
+    # 同じcheck_dateのファイルが複数ある場合、最新のみ使う
+    date_to_file = {}
+    for filepath in json_files:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            check_date = data.get('check_date', '')
+            if check_date:
+                date_to_file[check_date] = (filepath, data)
+        except Exception:
+            continue
+
     # 分院別集計
-    clinic_data = {}  # {clinic_name: {dates, total_blocks, dr_blocks, dh_blocks}}
+    clinic_data = {}
     checked_dates = set()
 
     def _strip_suffix(name):
         return _re.sub(r'\(\d+\)$', '', name).strip()
 
-    for filepath in json_files:
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception:
-            continue
-
+    for filepath, data in date_to_file.values():
         check_date = data.get('check_date', '')
-        if not check_date:
-            continue
         checked_dates.add(check_date)
 
         for result in data.get('results', []):
