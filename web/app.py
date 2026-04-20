@@ -72,6 +72,22 @@ def _sync_gcs_on_startup(config_path: str):
 
         print("[STARTUP] GCSマージ同期完了: staff_rules.yaml", flush=True)
         staff._gcs_loaded = True
+
+        # clinics.yaml の settings セクションを GCS から復元
+        # clinic list はイメージが正とし、settings のみ上書き
+        clinics_path = os.path.join(config_path, 'clinics.yaml')
+        tmp_clinics = os.path.join(tempfile.gettempdir(), 'gcs_clinics.yaml')
+        if download_from_gcs('config/clinics.yaml', tmp_clinics):
+            with open(tmp_clinics, 'r', encoding='utf-8') as f:
+                gcs_clinics = yaml.safe_load(f) or {}
+            if 'settings' in gcs_clinics:
+                with open(clinics_path, 'r', encoding='utf-8') as f:
+                    local_clinics = yaml.safe_load(f) or {}
+                local_clinics['settings'] = gcs_clinics['settings']
+                with open(clinics_path, 'w', encoding='utf-8') as f:
+                    yaml.dump(local_clinics, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+                print("[STARTUP] ルール設定をGCSから復元: clinics.yaml settings", flush=True)
+
     except Exception as e:
         print(f"[STARTUP] GCS同期失敗: {e}", flush=True)
 

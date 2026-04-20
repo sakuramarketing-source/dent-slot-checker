@@ -3,6 +3,7 @@
 import os
 import yaml
 from flask import Blueprint, jsonify, request, current_app
+from src.gcs_helper import upload_to_gcs
 
 bp = Blueprint('rules', __name__)
 
@@ -17,12 +18,14 @@ def load_clinics_config():
 
 
 def save_clinics_config(data):
-    """clinics.yamlに保存"""
+    """clinics.yamlに保存してGCSにもアップロード"""
     config_path = current_app.config['CONFIG_PATH']
     clinics_path = os.path.join(config_path, 'clinics.yaml')
 
     with open(clinics_path, 'w', encoding='utf-8') as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    upload_to_gcs(clinics_path, 'config/clinics.yaml')
 
 
 @bp.route('/', methods=['GET'])
