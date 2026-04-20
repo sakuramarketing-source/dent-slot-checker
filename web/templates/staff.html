@@ -267,7 +267,6 @@ async function syncStaff() {
     const btnLoading = btn.querySelector('.btn-loading');
     const statusEl = document.getElementById('syncStatus');
 
-    // ボタンを無効化
     btn.disabled = true;
     btnText.style.display = 'none';
     btnLoading.style.display = 'inline';
@@ -277,38 +276,58 @@ async function syncStaff() {
     try {
         const response = await fetch('/api/staff/sync', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         });
-
         const data = await safeJson(response);
-
-        if (data.success) {
-            statusEl.textContent = data.message;
-            statusEl.className = 'status-message success';
-
-            // 取得件数を表示
-            const counts = Object.entries(data.results)
-                .map(([clinic, count]) => `${clinic}: ${count}名`)
-                .join(', ');
-            statusEl.textContent += ` (${counts})`;
-
-            // スタッフ一覧を再読み込み
-            await loadStaff();
-        } else {
+        if (!data.success) {
             statusEl.textContent = 'エラー: ' + data.message;
             statusEl.className = 'status-message error';
+            btn.disabled = false;
+            btnText.style.display = 'inline';
+            btnLoading.style.display = 'none';
+            return;
         }
     } catch (error) {
         statusEl.textContent = 'エラー: ' + error.message;
         statusEl.className = 'status-message error';
-    } finally {
-        // ボタンを有効化
         btn.disabled = false;
         btnText.style.display = 'inline';
         btnLoading.style.display = 'none';
+        return;
     }
+
+    // ポーリングでステータスを確認
+    const startTime = Date.now();
+    const poll = setInterval(async () => {
+        try {
+            const res = await fetch('/api/staff/sync-status');
+            const s = await res.json();
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            statusEl.textContent = s.message + `（${elapsed}秒経過）`;
+
+            if (s.status === 'done') {
+                clearInterval(poll);
+                statusEl.className = 'status-message success';
+                const counts = Object.entries(s.results || {})
+                    .map(([clinic, count]) => `${clinic}: ${count}名`)
+                    .join(', ');
+                if (counts) statusEl.textContent += ` (${counts})`;
+                btn.disabled = false;
+                btnText.style.display = 'inline';
+                btnLoading.style.display = 'none';
+                await loadStaff();
+            } else if (s.status === 'error') {
+                clearInterval(poll);
+                statusEl.textContent = 'エラー: ' + s.message;
+                statusEl.className = 'status-message error';
+                btn.disabled = false;
+                btnText.style.display = 'inline';
+                btnLoading.style.display = 'none';
+            }
+        } catch (e) {
+            // ネットワークエラーは無視して続行
+        }
+    }, 3000);
 }
 
 // メモ更新

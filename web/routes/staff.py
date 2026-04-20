@@ -4,10 +4,14 @@ import os
 import json
 import glob
 import yaml
+import threading
 from flask import Blueprint, jsonify, request, current_app
 from src.gcs_helper import upload_to_gcs, download_from_gcs
 
 bp = Blueprint('staff', __name__)
+
+_sync_status = {"status": "idle", "message": "", "results": None}
+_sync_lock = threading.Lock()
 
 # コーポレートサイト沿革の開院順
 # https://sakurasakuyo.jp/history/
@@ -460,61 +464,84 @@ def update_threshold(clinic_name):
 
 @bp.route('/sync', methods=['POST'])
 def sync_staff():
-    """全分院のスタッフ名を同期取得"""
+    """全分院のスタッフ名を同期取得（バックグラウンド実行）"""
+    global _sync_status
+    with _sync_lock:
+        if _sync_status['status'] == 'running':
+            return jsonify({'success': True, 'status': 'already_running', 'message': '同期中です'})
+        _sync_status = {'status': 'running', 'message': '同期開始...', 'results': None}
+
+    app = current_app._get_current_object()
+    t = threading.Thread(target=_do_sync_staff, args=(app,), daemon=True)
+    t.start()
+
+    return jsonify({'success': True, 'status': 'running', 'message': '同期を開始しました'})
+
+
+@bp.route('/sync-status', methods=['GET'])
+def sync_status():
+    """スタッフ同期のステータスを返す"""
+    return jsonify(_sync_status)
+
+
+def _do_sync_staff(app):
+    """バックグラウンドで実行されるスタッフ同期処理"""
+    global _sync_status
     import asyncio
     import sys
 
-    # srcモジュールをインポート
-    sys.path.insert(0, current_app.config['PROJECT_ROOT'])
-    from src.scraper import sync_all_staff
-    from src.scraper_stransa import sync_stransa_staff
-    from src.scraper_gmo import sync_gmo_staff
-    from src.config_loader import load_config, get_enabled_clinics
+    with app.app_context():
+        try:
+            sys.path.insert(0, app.config['PROJECT_ROOT'])
+            from src.scraper import sync_all_staff
+            from src.scraper_stransa import sync_stransa_staff
+            from src.scraper_gmo import sync_gmo_staff
+            from src.config_loader import load_config, get_enabled_clinics
 
-    try:
-        # 設定読み込み
-        config = load_config()
-        clinics = get_enabled_clinics(config)
+            config = load_config()
+            clinics = get_enabled_clinics(config)
 
-        # dent-sys 同期
-        dent_sys_clinics = [c for c in clinics if c.get('system') not in ('stransa', 'gmo')]
-        sync_results = asyncio.run(sync_all_staff(dent_sys_clinics, headless=True))
+            # dent-sys 同期
+            dent_sys_clinics = [c for c in clinics if c.get('system') not in ('stransa', 'gmo', 'plum')]
+            with _sync_lock:
+                _sync_status['message'] = 'dent-sys 同期中...'
+            sync_results = asyncio.run(sync_all_staff(dent_sys_clinics, headless=True))
 
-        # Stransa 同期
-        stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
-        if stransa_clinics:
-            stransa_results = asyncio.run(sync_stransa_staff(stransa_clinics, headless=True))
-            sync_results.update(stransa_results)
+            # Stransa 同期
+            stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
+            if stransa_clinics:
+                with _sync_lock:
+                    _sync_status['message'] = 'Stransa 同期中...'
+                stransa_results = asyncio.run(sync_stransa_staff(stransa_clinics, headless=True))
+                sync_results.update(stransa_results)
 
-        # GMO 同期
-        gmo_clinics = [c for c in clinics if c.get('system') == 'gmo']
-        if gmo_clinics:
-            gmo_results = asyncio.run(sync_gmo_staff(gmo_clinics, headless=True))
-            sync_results.update(gmo_results)
+            # GMO 同期
+            gmo_clinics = [c for c in clinics if c.get('system') == 'gmo']
+            if gmo_clinics:
+                with _sync_lock:
+                    _sync_status['message'] = 'GMO 同期中...'
+                gmo_results = asyncio.run(sync_gmo_staff(gmo_clinics, headless=True))
+                sync_results.update(gmo_results)
 
-        # staff_rules.yaml を更新
-        staff_rules = load_staff_rules()
+            # staff_rules.yaml を更新
+            staff_rules = load_staff_rules()
+            if 'staff_by_clinic' not in staff_rules:
+                staff_rules['staff_by_clinic'] = {}
 
-        if 'staff_by_clinic' not in staff_rules:
-            staff_rules['staff_by_clinic'] = {}
+            for clinic_name, all_staff in sync_results.items():
+                if clinic_name not in staff_rules['staff_by_clinic']:
+                    staff_rules['staff_by_clinic'][clinic_name] = {}
+                staff_rules['staff_by_clinic'][clinic_name]['all_staff'] = all_staff
 
-        for clinic_name, all_staff in sync_results.items():
-            if clinic_name not in staff_rules['staff_by_clinic']:
-                staff_rules['staff_by_clinic'][clinic_name] = {}
+            save_staff_rules(staff_rules)
 
-            # all_staff リストを保存
-            staff_rules['staff_by_clinic'][clinic_name]['all_staff'] = all_staff
+            with _sync_lock:
+                _sync_status['status'] = 'done'
+                _sync_status['message'] = 'スタッフ同期完了'
+                _sync_status['results'] = {k: len(v) for k, v in sync_results.items()}
 
-        save_staff_rules(staff_rules)
-
-        return jsonify({
-            'success': True,
-            'message': 'スタッフ同期完了',
-            'results': {k: len(v) for k, v in sync_results.items()}
-        })
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        except Exception as e:
+            with _sync_lock:
+                _sync_status['status'] = 'error'
+                _sync_status['message'] = str(e)
+                _sync_status['results'] = None
