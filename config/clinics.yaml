@@ -121,7 +121,7 @@ plum_clinics:
 # 共通設定
 settings:
   consecutive_slots_required: 6
-  minimum_blocks_required: 4
+  minimum_blocks_required: 6
   slot_interval_minutes: 5
   exclude_patterns:
     - "訪問"
