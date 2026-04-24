@@ -22,6 +22,7 @@ from .scraper import scrape_all_clinics
 from .scraper_stransa import scrape_all_stransa_clinics
 from .scraper_gmo import scrape_all_gmo_clinics
 from .scraper_plum import scrape_all_plum_clinics
+from .scraper_pay_light import scrape_all_pay_light_clinics
 from .slot_analyzer import analyze_doctor_slots, check_clinic_availability, count_30min_blocks
 from .output_writer import save_results, format_summary
 
@@ -87,6 +88,10 @@ def analyze_results(
         interval = 15
     elif system_type == 'plum':
         # Plum: 15分刻み、2連続で30分
+        consecutive_required = 2
+        interval = 15
+    elif system_type == 'pay-light':
+        # paylight X: 15分刻み、2連続で30分
         consecutive_required = 2
         interval = 15
     else:
@@ -209,29 +214,43 @@ async def main_async(
         c for c in config.get('plum_clinics', [])
         if c.get('enabled', True)
     ]
+    pay_light_clinics = [
+        c for c in config.get('pay_light_clinics', [])
+        if c.get('enabled', True)
+    ]
 
     # フィルタを適用
     if system_filter == 'dent-sys':
         stransa_clinics = []
         gmo_clinics = []
         plum_clinics = []
+        pay_light_clinics = []
     elif system_filter == 'stransa':
         dent_sys_clinics = []
         gmo_clinics = []
         plum_clinics = []
+        pay_light_clinics = []
     elif system_filter == 'gmo':
         dent_sys_clinics = []
         stransa_clinics = []
         plum_clinics = []
+        pay_light_clinics = []
     elif system_filter == 'plum':
         dent_sys_clinics = []
         stransa_clinics = []
         gmo_clinics = []
+        pay_light_clinics = []
+    elif system_filter == 'pay-light':
+        dent_sys_clinics = []
+        stransa_clinics = []
+        gmo_clinics = []
+        plum_clinics = []
 
     logger.info(f"dent-sys.net 分院数: {len(dent_sys_clinics)}")
     logger.info(f"Stransa 分院数: {len(stransa_clinics)}")
     logger.info(f"GMO Reserve 分院数: {len(gmo_clinics)}")
     logger.info(f"Plum 分院数: {len(plum_clinics)}")
+    logger.info(f"paylight X 分院数: {len(pay_light_clinics)}")
     logger.info(f"除外パターン: {exclude_patterns}")
     logger.info(f"スロット設定: {slot_settings}")
 
@@ -292,6 +311,14 @@ async def main_async(
             headless
         ))
         task_labels.append('plum')
+
+    if pay_light_clinics:
+        logger.info("=== paylight X スクレイピング開始 ===")
+        scrape_tasks.append(scrape_all_pay_light_clinics(
+            pay_light_clinics,
+            headless
+        ))
+        task_labels.append('pay-light')
 
     # 全システム同時実行（10分タイムアウト）
     try:
@@ -359,7 +386,7 @@ def main():
     )
     parser.add_argument(
         '--system',
-        choices=['dent-sys', 'stransa', 'gmo', 'plum', 'all'],
+        choices=['dent-sys', 'stransa', 'gmo', 'plum', 'pay-light', 'all'],
         default='all',
         help='対象システム（デフォルト: all）'
     )

@@ -3,7 +3,7 @@
 clinics:
   - name: "さくら歯科"
     url: "https://www.dent-sys.net/sakura/t/"
-    enabled: true
+    enabled: false
     closed_days: ["祝"]
 
   - name: "ありす歯科"
@@ -116,6 +116,16 @@ plum_clinics:
     device_name: "瀧田セカンドPC"
     id: "admin"
     password: "IiasKasugai"
+    closed_days: ["祝"]
+
+# paylight X 分院設定
+pay_light_clinics:
+  - name: "さくら歯科"
+    url: "https://clinic.pay-light.com/stores/17201/booking"
+    enabled: true
+    system: "pay-light"
+    id: "sakura.marketing@s-sakurakai.jp"
+    password: "Sakura@1qaz"
     closed_days: ["祝"]
 
 # 共通設定

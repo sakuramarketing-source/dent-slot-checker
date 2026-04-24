@@ -70,8 +70,18 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
             clinic.setdefault('id', cred['id'])
             clinic.setdefault('password', cred['password'])
 
+    # paylight X 分院
+    pay_light_clinics = clinics_config.get('pay_light_clinics', [])
+    pay_light_cred_map = {c['name']: c for c in credentials.get('pay_light_clinics', [])}
+    for clinic in pay_light_clinics:
+        clinic['system'] = 'pay-light'
+        cred = pay_light_cred_map.get(clinic.get('name'))
+        if cred:
+            clinic.setdefault('id', cred['id'])
+            clinic.setdefault('password', cred['password'])
+
     # 全分院を統合
-    all_clinics = dent_sys_clinics + stransa_clinics + gmo_clinics + plum_clinics
+    all_clinics = dent_sys_clinics + stransa_clinics + gmo_clinics + plum_clinics + pay_light_clinics
 
     return {
         'clinics': all_clinics,
@@ -79,6 +89,7 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
         'stransa_clinics': stransa_clinics,
         'gmo_clinics': gmo_clinics,
         'plum_clinics': plum_clinics,
+        'pay_light_clinics': pay_light_clinics,
         'settings': clinics_config.get('settings', {}),
         'staff_categories': staff_rules.get('staff_categories', {}),
         'special_rules': staff_rules.get('special_rules', {}),

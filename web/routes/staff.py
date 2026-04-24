@@ -496,13 +496,14 @@ def _do_sync_staff(app):
             from src.scraper import sync_all_staff
             from src.scraper_stransa import sync_stransa_staff
             from src.scraper_gmo import sync_gmo_staff
+            from src.scraper_pay_light import sync_pay_light_staff
             from src.config_loader import load_config, get_enabled_clinics
 
             config = load_config()
             clinics = get_enabled_clinics(config)
 
             # dent-sys 同期
-            dent_sys_clinics = [c for c in clinics if c.get('system') not in ('stransa', 'gmo', 'plum')]
+            dent_sys_clinics = [c for c in clinics if c.get('system') not in ('stransa', 'gmo', 'plum', 'pay-light')]
             with _sync_lock:
                 _sync_status['message'] = 'dent-sys 同期中...'
             sync_results = asyncio.run(sync_all_staff(dent_sys_clinics, headless=True))
@@ -522,6 +523,14 @@ def _do_sync_staff(app):
                     _sync_status['message'] = 'GMO 同期中...'
                 gmo_results = asyncio.run(sync_gmo_staff(gmo_clinics, headless=True))
                 sync_results.update(gmo_results)
+
+            # paylight X 同期
+            pay_light_clinics = [c for c in clinics if c.get('system') == 'pay-light']
+            if pay_light_clinics:
+                with _sync_lock:
+                    _sync_status['message'] = 'paylight X 同期中...'
+                pay_light_results = asyncio.run(sync_pay_light_staff(pay_light_clinics, headless=True))
+                sync_results.update(pay_light_results)
 
             # staff_rules.yaml を更新
             staff_rules = load_staff_rules()
