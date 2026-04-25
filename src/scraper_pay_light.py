@@ -198,7 +198,7 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
                 const rect = el.getBoundingClientRect();
                 const text = el.textContent.trim().split('\\n')[0].trim();
                 if (rect.y < 60 || rect.y > 150) continue;
-                if (rect.width < 50 || rect.height < 15 || rect.height > 60) continue;
+                if (rect.width < 50 || rect.width > 250 || rect.height < 15 || rect.height > 60) continue;
                 if (!text || text.length === 0 || text.length > 50) continue;
                 // 時間ラベル（HH:MM）は除外
                 if (text.match(/^\\d{1,2}:\\d{2}$/)) continue;
@@ -229,11 +229,12 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
             // 左側固定の「H:MM」または「HH:MM」形式ラベル
             const timeLabels = [];
             const seenTimes = new Set();
-            for (const el of allEls) {
+            const allTimeEls = Array.from(document.querySelectorAll('div, span, p'));
+            for (const el of allTimeEls) {
                 const text = el.textContent.trim();
-                if (!text.match(/^\\d{1,2}:\\d{2}$/) || el.children.length > 0) continue;
+                if (!text.match(/^\d{1,2}:\d{2}$/)) continue;
                 const rect = el.getBoundingClientRect();
-                if (rect.y < 100 || rect.x > 400) continue;
+                if (rect.y < 100 || rect.x > 600) continue;
                 if (seenTimes.has(text)) continue;
                 seenTimes.add(text);
                 const parts = text.split(':').map(Number);
@@ -475,14 +476,15 @@ async def scrape_all_pay_light_clinics(clinics: list, headless: bool = True,
             if not clinic.get('enabled', True):
                 continue
             try:
-                clinic_results = await scrape_pay_light_clinic(browser, clinic)
+                clinic_results = await scrape_pay_light_clinic(browser, clinic) or {}
+                results[clinic['name']] = clinic_results
                 if clinic_results:
-                    results[clinic['name']] = clinic_results
                     logger.info(f"[{clinic['name']}] 完了: {len(clinic_results)}名分")
                 else:
-                    logger.warning(f"[{clinic['name']}] 結果なし")
+                    logger.warning(f"[{clinic['name']}] 結果なし（0枠）")
             except Exception as e:
                 logger.error(f"[{clinic['name']}] エラー: {e}")
+                results[clinic['name']] = {}
 
         return results
 
