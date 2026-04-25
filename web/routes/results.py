@@ -444,25 +444,35 @@ def run_check():
             stransa_clinics = [c for c in config.get('stransa_clinics', []) if c.get('enabled', True)]
             gmo_clinics = [c for c in config.get('gmo_clinics', []) if c.get('enabled', True)]
             plum_clinics = [c for c in config.get('plum_clinics', []) if c.get('enabled', True)]
+            pay_light_clinics = [c for c in config.get('pay_light_clinics', []) if c.get('enabled', True)]
 
             if system_filter == 'dent-sys':
                 stransa_clinics = []
                 gmo_clinics = []
                 plum_clinics = []
+                pay_light_clinics = []
             elif system_filter == 'stransa':
                 dent_sys_clinics = []
                 gmo_clinics = []
                 plum_clinics = []
+                pay_light_clinics = []
             elif system_filter == 'gmo':
                 dent_sys_clinics = []
                 stransa_clinics = []
                 plum_clinics = []
+                pay_light_clinics = []
             elif system_filter == 'plum':
                 dent_sys_clinics = []
                 stransa_clinics = []
                 gmo_clinics = []
+                pay_light_clinics = []
+            elif system_filter == 'pay-light':
+                dent_sys_clinics = []
+                stransa_clinics = []
+                gmo_clinics = []
+                plum_clinics = []
 
-            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院, GMO: {len(gmo_clinics)}分院, Plum: {len(plum_clinics)}分院")
+            logger_t.info(f"dent-sys: {len(dent_sys_clinics)}分院, Stransa: {len(stransa_clinics)}分院, GMO: {len(gmo_clinics)}分院, Plum: {len(plum_clinics)}分院, paylight: {len(pay_light_clinics)}分院")
 
             all_results = []
             total_clinics = 0
@@ -532,6 +542,17 @@ def run_check():
                     except Exception as e:
                         results.append(('plum', e))
                         logger_t.error(f"Plum失敗: {e}")
+
+                if pay_light_clinics:
+                    from src.scraper_pay_light import scrape_all_pay_light_clinics
+                    logger_t.info("=== paylight X スクレイピング開始 ===")
+                    try:
+                        r = await scrape_all_pay_light_clinics(pay_light_clinics, browser=browser)
+                        results.append(('pay-light', r))
+                        logger_t.info(f"=== paylight X 完了: {len(r)}分院 ===")
+                    except Exception as e:
+                        results.append(('pay-light', e))
+                        logger_t.error(f"paylight X失敗: {e}")
 
                 return results
 
@@ -612,7 +633,7 @@ def run_check():
     _check_thread = threading.Thread(target=_run_check_thread, daemon=True)
     _check_thread.start()
 
-    system_label = {'dent-sys': 'dent-sys', 'stransa': 'Stransa', 'gmo': 'GMO Reserve'}.get(system_filter, '全システム')
+    system_label = {'dent-sys': 'dent-sys', 'stransa': 'Stransa', 'gmo': 'GMO Reserve', 'plum': 'Plum', 'pay-light': 'paylight X'}.get(system_filter, '全システム')
     return jsonify({
         'success': True,
         'message': f'{system_label}のチェックを開始しました'
