@@ -272,6 +272,7 @@ document.querySelectorAll('.check-btn').forEach(function(btn) {
             }
 
             status.textContent = data.message + ' (0秒)';
+            const checkStartTime = Date.now();
 
             const pollInterval = setInterval(async () => {
                 try {
@@ -282,18 +283,21 @@ document.querySelectorAll('.check-btn').forEach(function(btn) {
                         let msg = 'チェック実行中... (' + st.elapsed + '秒)';
                         if (st.log_tail) msg += '\n' + st.log_tail;
                         status.textContent = msg;
-                    } else {
+                    } else if (st.success === true) {
                         clearInterval(pollInterval);
-                        if (st.success) {
-                            status.textContent = 'チェック完了！ページを更新します...';
-                            status.classList.add('success');
-                            setTimeout(function() { location.reload(); }, 1500);
-                        } else {
-                            status.textContent = 'エラー: ' + (st.message || 'チェック失敗');
-                            status.classList.add('error');
-                            allBtns.forEach(function(b) { b.disabled = false; });
-                            btn.textContent = originalText;
-                        }
+                        status.textContent = 'チェック完了！ページを更新します...';
+                        status.classList.add('success');
+                        setTimeout(function() { location.reload(); }, 1500);
+                    } else if (st.success === false) {
+                        clearInterval(pollInterval);
+                        status.textContent = 'エラー: ' + (st.message || 'チェック失敗');
+                        status.classList.add('error');
+                        allBtns.forEach(function(b) { b.disabled = false; });
+                        btn.textContent = originalText;
+                    } else {
+                        // success === null: 別インスタンスか未開始 → 継続ポーリング
+                        const elapsed = Math.round((Date.now() - checkStartTime) / 1000);
+                        status.textContent = 'チェック実行中... (' + elapsed + '秒)';
                     }
                 } catch (e) {
                     // ポーリング失敗は無視して続行

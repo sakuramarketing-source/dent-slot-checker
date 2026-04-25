@@ -229,18 +229,37 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
             // 左側固定の「H:MM」または「HH:MM」形式ラベル
             const timeLabels = [];
             const seenTimes = new Set();
-            const allTimeEls = Array.from(document.querySelectorAll('div, span, p'));
+            const allTimeEls = Array.from(document.querySelectorAll('div, span, p, li, td, label'));
+
+            // デバッグ: 時刻らしいテキストを持つ全要素を収集（ログ用）
+            const debugTimeCandidates = [];
             for (const el of allTimeEls) {
                 const text = el.textContent.trim();
-                if (!text.match(/^\d{1,2}:\d{2}$/)) continue;
+                if (text.match(/\d{1,2}:\d{2}/) && text.length < 20) {
+                    const rect = el.getBoundingClientRect();
+                    if (debugTimeCandidates.length < 10) {
+                        debugTimeCandidates.push({t: text, x: Math.round(rect.x), y: Math.round(rect.y), tag: el.tagName});
+                    }
+                }
+            }
+
+            for (const el of allTimeEls) {
+                const text = el.textContent.trim();
+                // HH:MM または HH:MM AM/PM 形式（全幅を含む）
+                const m = text.match(/^(\d{1,2}:\d{2})(\s*(AM|PM|am|pm))?$/);
+                if (!m) continue;
+                const timeStr = m[1];
                 const rect = el.getBoundingClientRect();
-                if (rect.y < 100 || rect.x > 600) continue;
-                if (seenTimes.has(text)) continue;
-                seenTimes.add(text);
-                const parts = text.split(':').map(Number);
+                if (rect.y < 100) continue;
+                if (seenTimes.has(timeStr)) continue;
+                seenTimes.add(timeStr);
+                const parts = timeStr.split(':').map(Number);
+                let minutes = parts[0] * 60 + parts[1];
+                // PM補正（12時以外）
+                if (m[3] && m[3].toUpperCase() === 'PM' && parts[0] !== 12) minutes += 720;
                 timeLabels.push({
-                    time: text,
-                    minutes: parts[0] * 60 + parts[1],
+                    time: timeStr,
+                    minutes: minutes,
                     y: rect.y + rect.height / 2
                 });
             }
@@ -278,12 +297,13 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
                 });
             }
 
-            return { headers, timeLabels, blocks };
+            return { headers, timeLabels, blocks, debugTimeCandidates };
         }''')
 
         headers = result['headers']
         time_labels = result['timeLabels']
         blocks = result['blocks']
+        debug_time = result.get('debugTimeCandidates', [])
 
         logger.info(f"[{clinic_name}] スタッフ列: {len(headers)}名, "
                     f"時間ラベル: {len(time_labels)}個, 予約ブロック: {len(blocks)}個")
@@ -291,6 +311,10 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
             logger.info(f"  ヘッダー: '{h['name']}' x={h['x']} w={h['width']}")
         for t in time_labels[:6]:
             logger.info(f"  時間: {t['time']} y={t['y']:.0f}")
+        if len(time_labels) == 0 and debug_time:
+            logger.warning(f"[{clinic_name}] 時間候補(デバッグ): {debug_time}")
+        elif len(time_labels) == 0:
+            logger.warning(f"[{clinic_name}] 時間候補なし（DOM上に時刻テキスト要素が見つからない）")
 
         if not headers or not time_labels:
             logger.warning(f"[{clinic_name}] ヘッダーまたは時間ラベルが取得できません "
