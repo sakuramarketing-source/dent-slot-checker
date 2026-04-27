@@ -187,6 +187,16 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
 
         logger.info(f"[{clinic_name}] レンダリング待機: {prev_count}要素 (ループ{i+1}回)")
 
+        # カレンダーを最上部（9:00）にスクロールして時間ラベルを表示
+        await page.evaluate('''() => {
+            // スクロール可能なコンテナを9:00先頭に戻す
+            document.querySelectorAll('*').forEach(el => {
+                if (el.scrollTop > 50) el.scrollTop = 0;
+            });
+            window.scrollTo(0, 0);
+        }''')
+        await page.wait_for_timeout(800)
+
         result = await page.evaluate('''() => {
 
             // === ステップ1: スタッフ列ヘッダーを取得 ===
@@ -394,22 +404,16 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
 
 
 async def get_pay_light_staff_names(page, clinic_name: str) -> List[str]:
-    """スタッフ同期用: ヘッダー行からスタッフ名一覧を取得"""
+    """スタッフ同期用: p.c-calendar__date__label からスタッフ名一覧を取得"""
     try:
         result = await page.evaluate('''() => {
             const names = [];
             const seen = new Set();
-            for (const el of document.querySelectorAll('div, span')) {
-                const rect = el.getBoundingClientRect();
-                const text = el.textContent.trim().split('\\n')[0].trim();
-                if (rect.y < 60 || rect.y > 150) continue;
-                if (rect.width < 50 || !text || text.length > 50) continue;
-                if (text.match(/^\\d{1,2}:\\d{2}$/) || text.match(/^\\d{4}年/)) continue;
-                if (['今日', '日', '月', '週'].includes(text)) continue;
-                if (!seen.has(text)) {
-                    seen.add(text);
-                    names.push(text);
-                }
+            for (const el of document.querySelectorAll('p.c-calendar__date__label')) {
+                const text = el.textContent.trim();
+                if (!text || seen.has(text)) continue;
+                seen.add(text);
+                names.push(text);
             }
             return names;
         }''')
