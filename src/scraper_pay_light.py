@@ -188,64 +188,48 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
         logger.info(f"[{clinic_name}] レンダリング待機: {prev_count}要素 (ループ{i+1}回)")
 
         result = await page.evaluate('''() => {
-            const allEls = Array.from(document.querySelectorAll('div, span'));
 
             // === ステップ1: スタッフ列ヘッダーを取得 ===
-            // ページ上部（y=60-150）に水平に並ぶカラムヘッダー
-            // スタッフ名テキストを含み、十分な幅の要素
-            const headerCandidates = [];
-            for (const el of allEls) {
-                const rect = el.getBoundingClientRect();
-                const text = el.textContent.trim().split('\\n')[0].trim();
-                if (rect.y < 60 || rect.y > 150) continue;
-                if (rect.width < 50 || rect.width > 250 || rect.height < 15 || rect.height > 60) continue;
-                if (!text || text.length === 0 || text.length > 50) continue;
-                // 時間ラベル（HH:MM）は除外
-                if (text.match(/^\\d{1,2}:\\d{2}$/)) continue;
-                // 「今日」「日」「月」などUI要素は除外
-                if (['今日', '日', '月', '週', '月表示', '日表示'].includes(text)) continue;
-                if (text.match(/^\\d{4}年/)) continue;  // 日付ヘッダーは除外
-
-                headerCandidates.push({
+            // p.c-calendar__date__label を直接使用（paylight X の確定クラス）
+            const headers = [];
+            const headerEls = Array.from(document.querySelectorAll('p.c-calendar__date__label'));
+            for (const el of headerEls) {
+                const text = el.textContent.trim();
+                if (!text) continue;
+                // 列幅は親コンテナ（c-calendar__date）から取得
+                const container = el.closest('.c-calendar__date') || el.parentElement;
+                const rect = (container || el).getBoundingClientRect();
+                if (rect.width < 10 || rect.height < 10) continue;
+                headers.push({
                     name: text,
                     x: Math.round(rect.x),
                     width: Math.round(rect.width),
                     y: Math.round(rect.y)
                 });
             }
-
-            // x座標でソートし、重複除去（20px以内は同一とみなす）
-            headerCandidates.sort((a, b) => a.x - b.x);
-            const headers = [];
-            let lastX = -999;
-            for (const h of headerCandidates) {
-                if (h.x - lastX > 20) {
-                    headers.push(h);
-                    lastX = h.x;
-                }
-            }
+            headers.sort((a, b) => a.x - b.x);
 
             // === ステップ2: 時間軸ラベル（y座標）を取得 ===
-            // 左側固定の「H:MM」または「HH:MM」形式ラベル
             const timeLabels = [];
             const seenTimes = new Set();
-            const allTimeEls = Array.from(document.querySelectorAll('div, span, p, li, td, label'));
 
-            // デバッグ: 時刻らしいテキストを持つ全要素を収集（ログ用）
+            // デバッグ: x<300 範囲にある全テキスト要素とそのクラスを収集
             const debugTimeCandidates = [];
-            for (const el of allTimeEls) {
+            for (const el of document.querySelectorAll('*')) {
+                const children = el.children;
+                if (children.length > 0) continue;  // リーフノードのみ
                 const text = el.textContent.trim();
-                if (text.match(/\d{1,2}:\d{2}/) && text.length < 20) {
-                    const rect = el.getBoundingClientRect();
-                    if (debugTimeCandidates.length < 10) {
-                        debugTimeCandidates.push({t: text, x: Math.round(rect.x), y: Math.round(rect.y), tag: el.tagName});
-                    }
+                if (!text || text.length > 15) continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.y < 150 || rect.x > 300 || rect.x < 0) continue;
+                if (debugTimeCandidates.length < 15) {
+                    debugTimeCandidates.push({t: text, cls: el.className, tag: el.tagName, x: Math.round(rect.x), y: Math.round(rect.y)});
                 }
             }
 
-            for (const el of allTimeEls) {
+            // HH:MM 形式の要素を全タグから取得（制限なし）
+            for (const el of document.querySelectorAll('*')) {
                 const text = el.textContent.trim();
-                // HH:MM または HH:MM AM/PM 形式（全幅を含む）
                 const m = text.match(/^(\d{1,2}:\d{2})(\s*(AM|PM|am|pm))?$/);
                 if (!m) continue;
                 const timeStr = m[1];
@@ -255,7 +239,6 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
                 seenTimes.add(timeStr);
                 const parts = timeStr.split(':').map(Number);
                 let minutes = parts[0] * 60 + parts[1];
-                // PM補正（12時以外）
                 if (m[3] && m[3].toUpperCase() === 'PM' && parts[0] !== 12) minutes += 720;
                 timeLabels.push({
                     time: timeStr,
@@ -270,7 +253,7 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
             const minY = timeLabels.length > 0 ? timeLabels[0].y - 40 : 100;
 
             const blocks = [];
-            for (const el of allEls) {
+            for (const el of document.querySelectorAll('div, span')) {
                 const rect = el.getBoundingClientRect();
                 if (rect.width < 20 || rect.height < 10) continue;
                 if (rect.x < minX || rect.y < minY) continue;
