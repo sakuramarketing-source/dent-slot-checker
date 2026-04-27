@@ -696,49 +696,62 @@ async def get_all_headers_from_page(page: Page) -> List[str]:
 
 async def sync_all_staff(
     clinics: List[Dict[str, str]],
-    headless: bool = True
+    headless: bool = True,
+    max_concurrent: int = 3,
+    progress_callback=None
 ) -> Dict[str, List[str]]:
     """
-    全分院のスタッフ名を同期取得
+    全分院のスタッフ名を同期取得（並列実行）
 
     Args:
         clinics: 分院設定リスト
         headless: ヘッドレスモードで実行するか
+        max_concurrent: 最大並列数
+        progress_callback: 1分院完了ごとに呼ばれる callback(name, done, total)
 
     Returns:
         {分院名: [全スタッフ名リスト]} の辞書
     """
     results = {}
+    total = len(clinics)
+    done_count = 0
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=headless,
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         )
+        sem = asyncio.Semaphore(max_concurrent)
 
-        for clinic in clinics:
-            logger.info(f"スタッフ同期中: {clinic['name']}")
-            page = await browser.new_page()
+        async def _sync_one(clinic):
+            nonlocal done_count
+            async with sem:
+                logger.info(f"スタッフ同期中: {clinic['name']}")
+                page = await browser.new_page()
+                try:
+                    if not await login(page, clinic):
+                        logger.warning(f"{clinic['name']}: ログイン失敗")
+                        return clinic['name'], []
+                    all_headers = await get_all_headers_from_page(page)
+                    logger.info(f"{clinic['name']}: {len(all_headers)}名取得")
+                    return clinic['name'], all_headers
+                except Exception as e:
+                    logger.error(f"同期エラー: {clinic['name']} - {e}")
+                    return clinic['name'], []
+                finally:
+                    done_count += 1
+                    if progress_callback:
+                        progress_callback(clinic['name'], done_count, total)
+                    await page.close()
 
-            try:
-                # ログイン
-                if not await login(page, clinic):
-                    logger.warning(f"{clinic['name']}: ログイン失敗")
-                    results[clinic['name']] = []
-                    continue
+        completed = await asyncio.gather(*[_sync_one(c) for c in clinics], return_exceptions=True)
 
-                # 全ヘッダーを取得
-                all_headers = await get_all_headers_from_page(page)
-                results[clinic['name']] = all_headers
-
-                logger.info(f"{clinic['name']}: {len(all_headers)}名取得")
-
-            except Exception as e:
-                logger.error(f"同期エラー: {clinic['name']} - {e}")
-                results[clinic['name']] = []
-
-            finally:
-                await page.close()
+        for item in completed:
+            if isinstance(item, Exception):
+                logger.error(f"同期エラー: {item}")
+                continue
+            name, staff = item
+            results[name] = staff
 
         await browser.close()
 

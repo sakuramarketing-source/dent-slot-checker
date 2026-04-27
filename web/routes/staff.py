@@ -489,6 +489,14 @@ def _do_sync_staff(app):
     global _sync_status
     import asyncio
     import sys
+    import logging as _logging
+
+    # バックグラウンドスレッドでもログが Cloud Run に出るよう StreamHandler を追加
+    root_logger = _logging.getLogger()
+    if not any(isinstance(h, _logging.StreamHandler) for h in root_logger.handlers):
+        _sh = _logging.StreamHandler(sys.stdout)
+        _sh.setLevel(_logging.INFO)
+        root_logger.addHandler(_sh)
 
     with app.app_context():
         try:
@@ -504,16 +512,40 @@ def _do_sync_staff(app):
 
             # dent-sys 同期
             dent_sys_clinics = [c for c in clinics if c.get('system') not in ('stransa', 'gmo', 'plum', 'pay-light')]
+            total_ds = len(dent_sys_clinics)
+
+            def dent_sys_progress(name, done, total):
+                with _sync_lock:
+                    _sync_status['message'] = f'dent-sys 同期中... {done}/{total} ({name})'
+
             with _sync_lock:
-                _sync_status['message'] = 'dent-sys 同期中...'
-            sync_results = asyncio.run(sync_all_staff(dent_sys_clinics, headless=True))
+                _sync_status['message'] = f'dent-sys 同期中... 0/{total_ds}'
+
+            async def _run_dent_sys():
+                return await asyncio.wait_for(
+                    sync_all_staff(dent_sys_clinics, headless=True, progress_callback=dent_sys_progress),
+                    timeout=300
+                )
+            sync_results = asyncio.run(_run_dent_sys())
 
             # Stransa 同期
             stransa_clinics = [c for c in clinics if c.get('system') == 'stransa']
             if stransa_clinics:
+                total_st = len(stransa_clinics)
+
+                def stransa_progress(name, done, total):
+                    with _sync_lock:
+                        _sync_status['message'] = f'Stransa 同期中... {done}/{total} ({name})'
+
                 with _sync_lock:
-                    _sync_status['message'] = 'Stransa 同期中...'
-                stransa_results = asyncio.run(sync_stransa_staff(stransa_clinics, headless=True))
+                    _sync_status['message'] = f'Stransa 同期中... 0/{total_st}'
+
+                async def _run_stransa():
+                    return await asyncio.wait_for(
+                        sync_stransa_staff(stransa_clinics, headless=True, progress_callback=stransa_progress),
+                        timeout=300
+                    )
+                stransa_results = asyncio.run(_run_stransa())
                 sync_results.update(stransa_results)
 
             # GMO 同期
@@ -521,7 +553,13 @@ def _do_sync_staff(app):
             if gmo_clinics:
                 with _sync_lock:
                     _sync_status['message'] = 'GMO 同期中...'
-                gmo_results = asyncio.run(sync_gmo_staff(gmo_clinics, headless=True))
+
+                async def _run_gmo():
+                    return await asyncio.wait_for(
+                        sync_gmo_staff(gmo_clinics, headless=True),
+                        timeout=120
+                    )
+                gmo_results = asyncio.run(_run_gmo())
                 sync_results.update(gmo_results)
 
             # paylight X 同期
@@ -529,7 +567,13 @@ def _do_sync_staff(app):
             if pay_light_clinics:
                 with _sync_lock:
                     _sync_status['message'] = 'paylight X 同期中...'
-                pay_light_results = asyncio.run(sync_pay_light_staff(pay_light_clinics, headless=True))
+
+                async def _run_pay_light():
+                    return await asyncio.wait_for(
+                        sync_pay_light_staff(pay_light_clinics, headless=True),
+                        timeout=120
+                    )
+                pay_light_results = asyncio.run(_run_pay_light())
                 sync_results.update(pay_light_results)
 
             # staff_rules.yaml を更新
