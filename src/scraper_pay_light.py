@@ -533,6 +533,18 @@ async def sync_pay_light_staff(clinics: list, headless: bool = True) -> Dict[str
                     if await login_pay_light(
                         page, clinic['url'], clinic['id'], clinic['password'], clinic_name
                     ):
+                        # 「日」ビューに切り替えてカレンダーヘッダーが描画されるまで待機
+                        day_btn = page.locator('button:has-text("日")').first
+                        if await day_btn.count() > 0:
+                            try:
+                                await day_btn.click()
+                                await page.wait_for_timeout(1500)
+                            except Exception:
+                                pass
+                        try:
+                            await page.wait_for_selector('p.c-calendar__date__label', timeout=15000)
+                        except Exception:
+                            pass
                         staff_names = await get_pay_light_staff_names(page, clinic_name)
                         results[clinic_name] = staff_names
                         logger.info(f"[{clinic_name}] スタッフ同期: {len(staff_names)}名")
