@@ -137,7 +137,7 @@ def get_all_staff():
 
     # clinics.yamlに存在するクリニックのみ表示（ゴースト排除）
     valid_clinic_names = set()
-    for section in ['clinics', 'stransa_clinics', 'gmo_clinics', 'plum_clinics']:
+    for section in ['clinics', 'stransa_clinics', 'gmo_clinics', 'plum_clinics', 'pay_light_clinics']:
         for clinic in clinics_config.get(section, []):
             valid_clinic_names.add(clinic['name'])
 
@@ -575,6 +575,19 @@ def _do_sync_staff(app):
                     )
                 pay_light_results = asyncio.run(_run_pay_light())
                 sync_results.update(pay_light_results)
+
+                # paylight 分院のゴミエントリをクリーンアップ
+                # （旧セレクタで混入した予約タイプ・部屋名を除去し、正しいスタッフ名のみ残す）
+                _pl_rules = load_staff_rules()
+                for clinic_name, new_staff in pay_light_results.items():
+                    if clinic_name not in _pl_rules.get('staff_by_clinic', {}):
+                        continue
+                    valid = set(new_staff)
+                    clinic_cfg = _pl_rules['staff_by_clinic'][clinic_name]
+                    for key in ('doctors', 'hygienists', 'orthodontists', 'disabled', 'web_booking'):
+                        if key in clinic_cfg:
+                            clinic_cfg[key] = [n for n in clinic_cfg[key] if n in valid]
+                save_staff_rules(_pl_rules)
 
             # staff_rules.yaml を更新
             staff_rules = load_staff_rules()

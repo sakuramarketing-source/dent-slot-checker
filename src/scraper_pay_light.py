@@ -204,11 +204,14 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
             // === ステップ1: スタッフ列ヘッダーを取得 ===
             // p.c-calendar__date__label を直接使用（paylight X の確定クラス）
             const headers = [];
-            const headerEls = Array.from(document.querySelectorAll('p.c-calendar__date__label'));
+            // 親コンテナに 'staff' クラスがある列のみ（予約タイプ列・部屋列を除外）
+            const headerEls = Array.from(document.querySelectorAll('p.c-calendar__date__label')).filter(el => {
+                const container = el.closest('.c-calendar__date');
+                return container && container.classList.contains('staff');
+            });
             for (const el of headerEls) {
                 const text = el.textContent.trim();
                 if (!text) continue;
-                // 列幅は親コンテナ（c-calendar__date）から取得
                 const container = el.closest('.c-calendar__date') || el.parentElement;
                 const rect = (container || el).getBoundingClientRect();
                 if (rect.width < 10 || rect.height < 10) continue;
@@ -412,6 +415,9 @@ async def get_pay_light_staff_names(page, clinic_name: str) -> List[str]:
             const names = [];
             const seen = new Set();
             for (const el of document.querySelectorAll('p.c-calendar__date__label')) {
+                // 親コンテナに 'staff' クラスがある列のみ（予約タイプ列・部屋列を除外）
+                const container = el.closest('.c-calendar__date');
+                if (!container || !container.classList.contains('staff')) continue;
                 const text = el.textContent.trim();
                 if (!text || seen.has(text)) continue;
                 seen.add(text);
