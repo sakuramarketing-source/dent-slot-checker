@@ -158,10 +158,22 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
     5. 被覆なし = 空き枠
     """
     try:
-        # React SPA のレンダリング完了を待機
+        # SPA の初期レンダリング完了を待機
         await page.wait_for_timeout(5000)
 
-        # 予約ブロック数が安定するまでポーリング（最大25秒）
+        # カレンダーを最上部（9:00）にスクロール（仮想DOM再描画を促すためポーリング前に実行）
+        await page.evaluate('''() => {
+            document.querySelectorAll('*').forEach(el => {
+                if (el.scrollTop > 50) {
+                    el.scrollTop = 0;
+                    el.dispatchEvent(new Event('scroll', { bubbles: true }));
+                }
+            });
+            window.scrollTo(0, 0);
+        }''')
+        await page.wait_for_timeout(2000)
+
+        # 予約ブロック数が安定するまでポーリング（9:00位置で実行）
         prev_count = 0
         stable = 0
         for i in range(25):
@@ -169,7 +181,7 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
                 let n = 0;
                 for (const el of document.querySelectorAll('div')) {
                     const r = el.getBoundingClientRect();
-                    if (r.width < 30 || r.height < 10 || r.y < 100) continue;
+                    if (r.width < 30 || r.height < 10 || r.y < 60) continue;
                     const bg = getComputedStyle(el).backgroundColor;
                     if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'rgb(255, 255, 255)') continue;
                     n++;
@@ -186,16 +198,6 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
             await page.wait_for_timeout(1000)
 
         logger.info(f"[{clinic_name}] レンダリング待機: {prev_count}要素 (ループ{i+1}回)")
-
-        # カレンダーを最上部（9:00）にスクロールして時間ラベルを表示
-        await page.evaluate('''() => {
-            // スクロール可能なコンテナを9:00先頭に戻す
-            document.querySelectorAll('*').forEach(el => {
-                if (el.scrollTop > 50) el.scrollTop = 0;
-            });
-            window.scrollTo(0, 0);
-        }''')
-        await page.wait_for_timeout(800)
 
         result = await page.evaluate('''() => {
 
@@ -244,7 +246,7 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
                 if (!m) continue;
                 const timeStr = m[1];
                 const rect = el.getBoundingClientRect();
-                if (rect.y < 100) continue;
+                if (rect.y < 60) continue;
                 if (seenTimes.has(timeStr)) continue;
                 seenTimes.add(timeStr);
                 const parts = timeStr.split(':').map(Number);
