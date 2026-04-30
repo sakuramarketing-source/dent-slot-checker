@@ -161,16 +161,12 @@ async def get_pay_light_empty_slots(page, clinic_name: str,
         # SPA の初期レンダリング完了を待機
         await page.wait_for_timeout(5000)
 
-        # カレンダーを最上部（9:00）にスクロール（仮想DOM再描画を促すためポーリング前に実行）
-        await page.evaluate('''() => {
-            document.querySelectorAll('*').forEach(el => {
-                if (el.scrollTop > 50) {
-                    el.scrollTop = 0;
-                    el.dispatchEvent(new Event('scroll', { bubbles: true }));
-                }
-            });
-            window.scrollTo(0, 0);
-        }''')
+        # カレンダーを最上部（9:00）にスクロール
+        # Playwright のマウスホイールを使用（Vue 仮想スクローラーが認識するネイティブイベント）
+        # JS の scrollTop 変更は Vue に無視されるため使わない
+        await page.mouse.move(800, 400)
+        for _ in range(10):
+            await page.mouse.wheel(0, -1000)
         await page.wait_for_timeout(2000)
 
         # 予約ブロック数が安定するまでポーリング（9:00位置で実行）
