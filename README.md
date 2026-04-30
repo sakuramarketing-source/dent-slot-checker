@@ -263,6 +263,8 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-04-30** paylight Vue仮想スクローラー対応: JS の `scrollTop=0` / `dispatchEvent('scroll')` は Vue に無視されるため Playwright ネイティブ `mouse.wheel(0, -1000)` × 10 に変更。カレンダーが下スクロール状態のままだと時間ラベルがビューポート外に追い出され `timeLabels=0` となり空き枠ゼロになっていた問題を解消
+- **2026-04-27** paylight X スタッフ名ゴミデータ修正: `p.c-calendar__date__label` は予約タイプ列・部屋列にも使われるクラスだったため親コンテナの `.staff` クラスでフィルタ。スタッフ管理ページへの pay_light_clinics 追加・スタッフ同期後のゴミエントリ削除処理も追加
 - **2026-04-27** paylight X（さくら歯科）スタッフ同期修正: ログイン後に「日」ビュー切替 + `p.c-calendar__date__label` 描画待ち（15秒）を追加。Vue.js SPA の描画前にセレクタを叩いて空/誤ったスタッフ名になっていた問題を解消
 - **2026-04-27** スタッフ同期並列化: dent-sys・Stransa の同期を semaphore=3 で並列実行。逐次処理（最悪36分）から6〜8分に短縮。per-clinic 進捗メッセージ・per-system 5分タイムアウト・バックグラウンドスレッドの StreamHandler ロギングを追加
 - **2026-04-27** paylight X ダッシュボード対応: `web/routes/results.py` に pay-light チェックルートを追加。さくら歯科が19分院目として結果に表示されるように。「pay-lightのみ」チェックボタン・フィルターボタンも追加
