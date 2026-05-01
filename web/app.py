@@ -20,10 +20,11 @@ def _merge_staff_rules(local_data, gcs_data):
     import copy
     merged = copy.deepcopy(local_data)
 
-    # ユーザーがダッシュボードで管理するキー（GCSから保持）
-    # doctors/hygienists/orthodontists/all_staff はgit管理（Dockerイメージが正）
+    # GCSから保持するキー（UIまたはスタッフ同期で更新されるもの）
+    # クリニックの存在自体はDockerイメージが正（追加・削除はコード管理）
     USER_KEYS = {
         'web_booking', 'memos', 'tags', 'disabled', 'slot_threshold',
+        'all_staff', 'doctors', 'hygienists', 'orthodontists',
     }
 
     gcs_clinics = gcs_data.get('staff_by_clinic', {})
