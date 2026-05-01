@@ -263,6 +263,7 @@ dent-slot-checker/
 
 ## 更新履歴
 
+- **2026-05-01** デプロイ後にスタッフ同期データが消える問題を修正: 起動時GCSマージの `USER_KEYS` に `all_staff`/`doctors`/`hygienists`/`orthodontists` を追加。スタッフ同期やUI設定でGCSに保存したデータがデプロイのたびにDockerイメージ版で上書きされていた
 - **2026-04-30** paylight Vue仮想スクローラー対応: JS の `scrollTop=0` / `dispatchEvent('scroll')` は Vue に無視されるため Playwright ネイティブ `mouse.wheel(0, -1000)` × 10 に変更。カレンダーが下スクロール状態のままだと時間ラベルがビューポート外に追い出され `timeLabels=0` となり空き枠ゼロになっていた問題を解消
 - **2026-04-27** paylight X スタッフ名ゴミデータ修正: `p.c-calendar__date__label` は予約タイプ列・部屋列にも使われるクラスだったため親コンテナの `.staff` クラスでフィルタ。スタッフ管理ページへの pay_light_clinics 追加・スタッフ同期後のゴミエントリ削除処理も追加
 - **2026-04-27** paylight X（さくら歯科）スタッフ同期修正: ログイン後に「日」ビュー切替 + `p.c-calendar__date__label` 描画待ち（15秒）を追加。Vue.js SPA の描画前にセレクタを叩いて空/誤ったスタッフ名になっていた問題を解消
