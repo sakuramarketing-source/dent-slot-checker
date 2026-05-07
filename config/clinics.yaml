@@ -128,6 +128,14 @@ pay_light_clinics:
     password: "Sakura@1qaz"
     closed_days: ["祝"]
 
+# メディア（pgas.yoyaku.media）分院設定
+# 認証情報(group_id/id/password/device_name)はSecret Managerで管理
+media_clinics:
+  - name: "増田歯科"
+    url: "https://pgas.yoyaku.media/"
+    system: "media"
+    enabled: false
+
 # 共通設定
 settings:
   consecutive_slots_required: 6

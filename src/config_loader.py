@@ -80,8 +80,21 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
             clinic.setdefault('id', cred['id'])
             clinic.setdefault('password', cred['password'])
 
+    # メディア（pgas.yoyaku.media）分院
+    media_clinics = clinics_config.get('media_clinics', [])
+    media_cred_map = {c['name']: c for c in credentials.get('media_clinics', [])}
+    for clinic in media_clinics:
+        clinic['system'] = 'media'
+        cred = media_cred_map.get(clinic.get('name'))
+        if cred:
+            clinic.setdefault('group_id', cred.get('group_id', ''))
+            clinic.setdefault('id', cred['id'])
+            clinic.setdefault('password', cred['password'])
+            clinic.setdefault('device_name', cred.get('device_name', 'さくら会マーケPC'))
+
     # 全分院を統合
-    all_clinics = dent_sys_clinics + stransa_clinics + gmo_clinics + plum_clinics + pay_light_clinics
+    all_clinics = (dent_sys_clinics + stransa_clinics + gmo_clinics
+                   + plum_clinics + pay_light_clinics + media_clinics)
 
     return {
         'clinics': all_clinics,
@@ -90,6 +103,7 @@ def load_config(config_dir: Path = None) -> Dict[str, Any]:
         'gmo_clinics': gmo_clinics,
         'plum_clinics': plum_clinics,
         'pay_light_clinics': pay_light_clinics,
+        'media_clinics': media_clinics,
         'settings': clinics_config.get('settings', {}),
         'staff_categories': staff_rules.get('staff_categories', {}),
         'special_rules': staff_rules.get('special_rules', {}),
